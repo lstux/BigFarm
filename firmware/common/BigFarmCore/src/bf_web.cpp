@@ -1,8 +1,23 @@
 #include "bf_web.h"
 
+#include <vector>
+
 #include "bf_system.h"
 
 namespace bf {
+
+struct NavLink {
+  const char *href;
+  const char *label;
+};
+static std::vector<NavLink> gNav;
+
+void addNavLink(const char *href, const char *label) {
+  NavLink l;
+  l.href = href;
+  l.label = label;
+  gNav.push_back(l);
+}
 
 String htmlEscape(const String &s) {
   String out;
@@ -50,8 +65,16 @@ String pageHeader(const String &title) {
   h += FPSTR(kStyle);
   h += F("</style></head><body><header><h1>");
   h += htmlEscape(title);
-  h += F("</h1><nav><a href=\"/\">Diagnostic</a><a href=\"/wifi\">Wi-Fi</a>"
-         "<a href=\"/api/diag\">JSON</a></nav></header><main>");
+  h += F("</h1><nav>");
+  if (gNav.empty()) h += F("<a href=\"/\">Diagnostic</a>");
+  for (size_t i = 0; i < gNav.size(); i++) {
+    h += "<a href=\"";
+    h += gNav[i].href;
+    h += "\">";
+    h += gNav[i].label;
+    h += "</a>";
+  }
+  h += F("<a href=\"/wifi\">Wi-Fi</a><a href=\"/api/diag\">JSON</a></nav></header><main>");
   return h;
 }
 
