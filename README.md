@@ -1,50 +1,57 @@
 # BigFarm
 
-Gestionnaire de culture d'intérieur basé sur une carte **Guition ESP32-4848S040** (ESP32-S3, écran tactile IPS 4" 480×480, 16 Mo de flash, 8 Mo de PSRAM).
+Système modulaire de surveillance et d'automatisation pour une petite culture indoor (mini-tente d'environ 60 × 120 cm au départ).
 
-## Objectifs
+- **BigFarm Central** : carte Guition ESP32-4848S040 (ESP32-S3, écran tactile 4" 480×480). Interface principale (écran et web), coordination des modules, bibliothèque de médias.
+- **BigFarm Cam** : ESP32-CAM HW-297. Flux, photos, timelapse. Réutilisable hors BigFarm.
+- **Modules capteurs / actionneurs** : plus tard, via Wi-Fi/MQTT.
 
-- **Capteurs** : température, humidité de l'air, pression (BME280), humidité du sol et autres entrées analogiques (ADS1115), horloge temps réel (DS3231).
-- **Actionneurs** : ventilation, irrigation, éclairage… pilotés via une extension GPIO I2C (PCF8575) et des relais.
-- **Journalisation** sur carte SD.
-- **Interface** : écran tactile intégré avec courbes, et interface web.
+Le cadrage (v0.2) et le suivi des jalons sont dans le Notebook du projet. Les décisions techniques sont reprises dans [`docs/decisions.md`](docs/decisions.md).
 
-## Matériel
+## Phase actuelle : Jalon 0, inventaire matériel
 
-| Élément | Détail |
-|---|---|
-| Carte | Guition ESP32-4848S040 (ESP32-S3-WROOM N16R8) |
-| Écran / tactile | ST7701 480×480 (bus RGB) / GT911 (I2C sur GPIO19 SDA, GPIO45 SCL) |
-| Capteurs I2C | BME280, ADS1115, DS3231 |
-| Extension GPIO | PCF8575 (I2C) |
-| Stockage | Lecteur microSD intégré |
+On observe et on mesure le matériel avant d'automatiser. Les deux firmwares actuels sont des **firmwares de diagnostic** : ils lisent ce que la carte est vraiment (mémoire, capteur caméra, tactile, cartes SD) et l'affichent sur le port série et dans une page web. Les résultats alimentent [`docs/materiel.md`](docs/materiel.md).
 
-### Second bus I2C
+## Organisation du dépôt
 
-Le bus du tactile (GPIO19/45) reste dédié au GT911. Les capteurs sont placés sur un **second bus I2C** (`Wire1`), repris sur les broches libérées par le retrait de la carte 3 relais (GPIO 40, 2 et 1 d'après les configurations communautaires). Le choix des deux broches est à confirmer par des mesures sur la carte réelle : voir `include/config.h`.
-
-Les modules capteurs doivent être alimentés en **3,3 V** (l'ESP32-S3 n'est pas tolérant 5 V).
-
-Adresses I2C attendues : BME280 `0x76`/`0x77`, ADS1115 `0x48`–`0x4B`, DS3231 `0x68` (EEPROM `0x57`), PCF8575 `0x20`–`0x27`.
-
-## Développement
-
-Le projet utilise [PlatformIO](https://platformio.org/).
-
-```sh
-pio run                 # compiler
-pio run -t upload       # flasher
-pio device monitor      # moniteur série (115200 bauds)
+```
+firmware/
+  cam/        BigFarm Cam (ESP32-CAM)            projet PlatformIO
+  central/    BigFarm Central (Guition ESP32-S3) projet PlatformIO
+  common/     BigFarmCore : code partagé (identité, diagnostic, Wi-Fi, console, pages web)
+docs/
+  materiel.md   fiche matériel vérifiée (à compléter avec les diagnostics)
+  decisions.md  décisions techniques
 ```
 
-Le premier programme (`src/main.cpp`) scanne le bus I2C et affiche les adresses trouvées sur le port série.
+Le premier brouillon (squelette + scan I2C) est conservé dans la branche `archive/first-draft`.
 
-## État
+## Compiler et flasher
 
-- [x] Squelette du projet
-- [ ] Validation du brochage du second bus I2C
-- [ ] Lecture BME280 / ADS1115 / DS3231
-- [ ] Pilotage du PCF8575 (relais)
-- [ ] Affichage (ST7701 + LVGL) et tactile (GT911)
-- [ ] Journalisation SD
-- [ ] Interface web
+Prérequis : [PlatformIO](https://platformio.org/) (CLI ou extension VS Code).
+
+```sh
+# Caméra (via l'adaptateur ESP32-CAM-MB)
+pio run -d firmware/cam -t upload
+pio device monitor -d firmware/cam
+
+# Centrale
+pio run -d firmware/central -t upload
+pio device monitor -d firmware/central
+```
+
+Dans VS Code, ouvrir le dossier `firmware/cam` ou `firmware/central` comme projet PlatformIO.
+
+## Utiliser un firmware de diagnostic
+
+1. Flasher, puis ouvrir le moniteur série (115200 bauds) : le diagnostic complet s'affiche au démarrage.
+2. Sans réseau enregistré, le module ouvre un point d'accès **`BigFarm-cam-xxxxxx`** ou **`BigFarm-central-xxxxxx`**, mot de passe **`bigfarm-setup`**. S'y connecter : la page de configuration Wi-Fi s'ouvre (sinon aller sur `http://192.168.4.1/wifi`).
+   - Ou depuis le moniteur série : `wifi "Nom du réseau" motdepasse`.
+3. Une fois connecté, le module est joignable sur `http://bf-cam-xxxxxx.local/` (ou son adresse IP, affichée sur le port série).
+4. Page `/` : diagnostic lisible. Page `/api/diag` : le même diagnostic en JSON. Sur la caméra, bouton « Prendre une photo » (`/capture`).
+
+Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus `mesure` et `sd` sur la caméra, `i2c` et `sd` sur la centrale.
+
+## Sécurité
+
+Les sorties de la carte fille de la centrale (L1/L2/L3, secteur) **ne sont pas pilotées** par le code actuel. Aucune charge ne doit y être raccordée avant l'identification électrique de la carte (voir `docs/materiel.md`).
