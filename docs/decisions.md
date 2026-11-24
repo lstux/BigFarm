@@ -13,3 +13,12 @@ Les décisions sont datées. Une décision peut être revue : on ajoute alors un
 - **Wi-Fi** : identifiants en NVS. Point d'accès de configuration (mot de passe `bigfarm-setup`) quand aucun réseau n'est connu ou joignable ; retour automatique en mode station quand le réseau revient.
 - **Langue** : français dans le code commenté, la documentation et les interfaces.
 - **Premier pas** : firmwares de diagnostic pour la caméra et la centrale (Jalon 0).
+
+## 2026-11-25 — Écran de la centrale
+
+- **Pilote d'écran maison** sur `esp_lcd` (bus RGB d'ESP-IDF 4.4), sans Arduino_GFX : initialisation du ST7701S par SPI 3 fils logiciel, séquence et timings repris de la définition Guition d'Arduino_GFX 1.4.9. Moins de dépendances, et contrôle direct du tampon d'image en PSRAM.
+- **LVGL 8.3.11** (version figée), polices Montserrat régénérées avec les accents français et les symboles LVGL (14, 18, 24, 32 px).
+- **Thème sombre**, couleur d'accent du projet (#1FBF8F), orange pour « attention », rouge pour « erreur ». Les états ne reposent jamais sur la couleur seule (texte toujours présent).
+- **Rotation logicielle** réglable (0/90/180/270°) : l'orientation physique du boîtier n'est pas connue à l'avance.
+- **Sorties de la carte fille** affichées mais désactivées tant que la carte n'est pas validée.
+- **Simulateur PC** (`tools/ui-sim`) : rend l'interface en PNG sans la carte, pour itérer sur l'UI.

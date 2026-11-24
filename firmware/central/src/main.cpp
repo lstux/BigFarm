@@ -1,11 +1,9 @@
-// BigFarm Central — firmware de diagnostic (Jalon 0).
+// BigFarm Central.
 //
-// Au démarrage : informations système (taille réelle de la Flash et de la PSRAM),
-// test PSRAM, scan du bus I2C du tactile et identification du GT911,
-// test du lecteur microSD, Wi-Fi.
-// Ensuite : page de diagnostic web et console série.
+// - Écran tactile 480x480 (LVGL) : Accueil, Caméra, Mesures, Commandes, Modules, Réglages.
+// - Diagnostic au démarrage : mémoire réelle, PSRAM, bus du tactile (GT911), microSD.
+// - Web : diagnostic (/) et configuration Wi-Fi ; console série (« aide »).
 //
-// L'écran n'est pas encore initialisé : ce sera l'étape suivante (ST7701 + LVGL).
 // Les sorties de la carte fille ne sont pas touchées.
 
 #include <Arduino.h>
@@ -18,6 +16,8 @@
 #include <vector>
 
 #include "board_guition_4848s040.h"
+#include "display.h"
+#include "ui.h"
 
 #ifndef BF_FW_VERSION
 #define BF_FW_VERSION "dev"
@@ -145,9 +145,8 @@ static String buildDiag() {
   bf::addPsramTest(j, psramTest);
   addTouch(j);
   bf::addStorage(j, "microsd", sdTest);
-  j.beginObject("ecran");
-  j.add("etat", "non initialisé (étape suivante : ST7701 + LVGL)");
-  j.endObject();
+  display::addStatus(j);
+  bf::addTime(j);
   j.beginObject("sorties");
   j.add("etat", "non pilotées (carte fille à identifier avant tout usage)");
   j.endObject();
@@ -192,6 +191,20 @@ static void setupConsole() {
     SD.end();
     testSd();
   });
+  console.add("luminosite", "luminosite <10-255> : rétroéclairage de l'écran", [](const String &args) {
+    const long v = args.toInt();
+    if (v < 10 || v > 255) {
+      Serial.println("Usage : luminosite <10-255>");
+      return;
+    }
+    display::setBrightness(static_cast<uint8_t>(v));
+  });
+  console.add("rotation", "rotation <0|90|180|270> : orientation de l'écran", [](const String &args) {
+    if (!display::setRotation(static_cast<uint16_t>(args.toInt()))) Serial.println("Usage : rotation <0|90|180|270>");
+  });
+  console.add("page", "page <0-5> : affiche une page de l'écran", [](const String &args) {
+    ui::showPage(static_cast<ui::Page>(args.toInt()));
+  });
   console.add("redemarrer", "redémarre la centrale", [](const String &) { ESP.restart(); });
 }
 
@@ -206,18 +219,25 @@ void setup() {
                 bf::humanBytes(bf::detectedFlashSize()).c_str(), bf::humanBytes(ESP.getFlashChipSize()).c_str(),
                 psramFound() ? bf::humanBytes(ESP.getPsramSize()).c_str() : "absente");
 
-  psramTest = bf::runPsramTest(2 * 1024 * 1024);
-  Serial.printf("[psram] test : %s\n", psramTest.ok ? "OK" : psramTest.error.c_str());
-
   Wire.begin(BOARD_TOUCH_SDA, BOARD_TOUCH_SCL, BOARD_TOUCH_I2C_FREQ);
   scanTouchBus();
+
+  // L'écran avant la microSD : ils partagent SCK (48) et MOSI (47).
+  const bool screen = display::begin();
+  if (screen) ui::showSplash("Démarrage…");
+
+  psramTest = bf::runPsramTest(2 * 1024 * 1024);
+  Serial.printf("[psram] test : %s\n", psramTest.ok ? "OK" : psramTest.error.c_str());
 
   sdSpi.begin(BOARD_SD_SCK, BOARD_SD_MISO, BOARD_SD_MOSI, BOARD_SD_CS);
   testSd();
 
+  if (screen) ui::showSplash("Connexion au Wi-Fi…");
   wifi.begin(server, bf::moduleId());
+  bf::timeBegin();
   setupWeb();
   setupConsole();
+  if (screen) ui::begin();
 
   printDiag();
   Serial.println("Tapez « aide » pour la liste des commandes.");
@@ -227,5 +247,12 @@ void loop() {
   server.handleClient();
   wifi.loop();
   console.loop(Serial);
-  delay(2);
+  display::loop();
+
+  static uint32_t lastTick = 0;
+  if (display::ready() && millis() - lastTick >= 1000) {
+    lastTick = millis();
+    ui::tick();
+  }
+  delay(1);
 }
