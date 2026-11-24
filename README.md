@@ -56,6 +56,9 @@ Dans VS Code, ouvrir le dossier `firmware/cam` ou `firmware/central` comme proje
 - `http://<module>:81/stream` : flux MJPEG brut (jusqu'à 3 clients simultanés, par exemple la centrale et un navigateur).
 - `/capture` : une photo JPEG.
 - `/api/camera` : réglages en JSON (GET) ; modification par POST (champs de formulaire : `resolution`, `qualite`, `luminosite`, `contraste`, `saturation`, `led`, `ips_max`, `miroir_vertical`, `miroir_horizontal`, `balance_blancs_auto`, `exposition_auto`, `gain_auto`).
+- `/photos` : photos enregistrées sur la microSD (dossier `/photos`), avec téléchargement et suppression. Bouton « Enregistrer sur la carte » sur la page Caméra, commande série `photo`.
+- `/api/photo` (POST) : prend une photo et l'enregistre ; `/api/photos` : liste ; `/photo?nom=…` : un fichier.
+- Les photos sont nommées `AAAAMMJJ-HHMMSS.jpg` dès que l'heure est obtenue par NTP (fuseau Europe/Paris), `sansdate-00001.jpg` sinon.
 - `/api/info` : identité et adresses du module, utilisées par la centrale. Le module s'annonce aussi en mDNS (service `_bigfarm._tcp`, champ `type=cam`).
 
 Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus `mesure` et `sd` sur la caméra, `i2c` et `sd` sur la centrale.
