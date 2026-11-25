@@ -41,7 +41,8 @@ Légende : ✅ vérifié sur la carte · ❔ supposé (documentation communautai
 | PSRAM | 4 Mo ? | ❔ | diag : `psram`, `test_psram` |
 | Flash | 4 Mo ? | ❔ | diag : `flash_detectee` |
 | microSD | SDMMC 1 bit | ❔ | diag : `microsd` |
-| Capture SVGA | à mesurer | ❌ | diag : `camera.mesure_capture` |
+| Flux SVGA (800×600) | plus de 15 img/s | ✅ | page Caméra, 2026-11-25 |
+| Flux UXGA (1600×1200) | environ 2 à 3 img/s | ✅ (approx.) | page Caméra, 2026-11-25 |
 | LED blanche | GPIO 4 | ❔ | |
 | LED rouge | GPIO 33, active à l'état bas | ❔ | |
 
@@ -50,3 +51,14 @@ Légende : ✅ vérifié sur la carte · ❔ supposé (documentation communautai
 | Carte | Capacité | Format | Utilisée dans |
 |---|---|---|---|
 | | | | |
+
+## Mesures caméra (Jalon 2)
+
+Relevés sur la page Caméra du module (compteur img/s), Wi-Fi domestique.
+
+| Date | Résolution | Images/s | Remarques |
+|---|---|---|---|
+| 2026-11-25 | SVGA 800×600 | > 15 | fluide |
+| 2026-11-25 | UXGA 1600×1200 | ~2-3 | maximum du capteur, valeur approximative |
+
+À compléter : VGA, XGA, HD, qualité JPEG, taille moyenne des images, et cadence affichée sur la centrale.
