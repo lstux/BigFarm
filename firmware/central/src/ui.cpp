@@ -115,7 +115,7 @@ void showSplash(const char *message) {
   lv_obj_t *m = static_cast<lv_obj_t *>(lv_obj_get_user_data(gSplash));
   lv_label_set_text(m, message);
   lv_obj_align(m, LV_ALIGN_CENTER, 0, 20);
-  display::loop();
+  lv_refr_now(nullptr);  // affichage immédiat : la suite du démarrage peut bloquer
 }
 
 // ---------------------------------------------------------------------------
