@@ -23,6 +23,15 @@ static volatile bool gPhotoRequested = false;
 static String gManualHost;
 static String gPhotoResult;
 
+// Résolutions de la caméra.
+static const int kMaxRes = 16;
+static int gResId[kMaxRes];
+static String gResName[kMaxRes];
+static int gResCount = 0;
+static int gResCurrent = -1;
+static volatile int gResRequested = -1;
+static volatile bool gResStale = true;
+
 // Tampons d'image (PSRAM) : un affiché, un en attente, un en cours d'écriture.
 static uint16_t *gBuf[kBuffers] = {nullptr};
 static uint16_t gBufW[kBuffers] = {0};
@@ -96,6 +105,89 @@ static bool fetchInfo(const String &host, String &id, String &fw) {
   return ok;
 }
 
+// Lit /api/camera : liste des résolutions et réglage courant.
+static void parseSettings(const String &body, bool withList) {
+  const int r = body.indexOf("\"reglages\"");
+  int cur = -1;
+  if (r >= 0) {
+    const int k = body.indexOf("\"resolution\":", r);
+    if (k >= 0) cur = body.substring(k + 13).toInt();
+  }
+  int ids[kMaxRes];
+  String names[kMaxRes];
+  int n = 0;
+  if (withList) {
+    int pos = body.indexOf("\"resolutions\"");
+    while (pos >= 0 && n < kMaxRes) {
+      const int a = body.indexOf("\"id\":", pos);
+      if (a < 0) break;
+      const int b = body.indexOf("\"nom\":\"", a);
+      if (b < 0) break;
+      const int e = body.indexOf('"', b + 7);
+      if (e < 0) break;
+      ids[n] = body.substring(a + 5).toInt();
+      names[n] = body.substring(b + 7, e);
+      n++;
+      pos = e;
+    }
+  }
+  Lock l;
+  gResCurrent = cur;
+  if (withList && n > 0) {
+    for (int i = 0; i < n; i++) {
+      gResId[i] = ids[i];
+      gResName[i] = names[i];
+    }
+    gResCount = n;
+  }
+}
+
+static void fetchResolutions(const String &host) {
+  HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(3000);
+  if (!http.begin("http://" + host + "/api/camera")) return;
+  if (http.GET() == 200) parseSettings(http.getString(), true);
+  http.end();
+}
+
+static void doSetResolution(const String &host) {
+  const int id = gResRequested;
+  gResRequested = -1;
+  if (id < 0) return;
+  HTTPClient http;
+  http.setConnectTimeout(3000);
+  http.setTimeout(8000);
+  if (!http.begin("http://" + host + "/api/camera")) return;
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  const int code = http.POST("resolution=" + String(id));
+  if (code == 200) {
+    parseSettings(http.getString(), false);
+  } else {
+    Lock l;
+    gStatus.message = "changement de résolution refusé (code " + String(code) + ")";
+  }
+  http.end();
+}
+
+int resolutionCount() {
+  Lock l;
+  return gResCount;
+}
+String resolutionName(int index) {
+  Lock l;
+  return (index >= 0 && index < gResCount) ? gResName[index] : String();
+}
+int resolutionId(int index) {
+  Lock l;
+  return (index >= 0 && index < gResCount) ? gResId[index] : -1;
+}
+int currentResolutionId() {
+  Lock l;
+  return gResCurrent;
+}
+void setResolution(int id) { gResRequested = id; }
+
 static void discover() {
   gRediscover = false;
   if (WiFi.status() != WL_CONNECTED) {
@@ -142,6 +234,7 @@ static void discover() {
     gStatus.state = STATE_IDLE;
     gStatus.message = "";
   }
+  gResStale = true;
   Serial.printf("[camera] caméra %s à %s%s\n", id.c_str(), host.c_str(), manual ? " (adresse fixée)" : "");
 }
 
@@ -316,6 +409,7 @@ static void streamSession(const String &host) {
   uint32_t lastFrame = millis();
   while (gWanted && c.connected()) {
     if (gPhotoRequested) doPhoto(host);
+    if (gResRequested >= 0) doSetResolution(host);
 
     // En-têtes de la partie suivante : on cherche Content-Length puis la ligne vide.
     size_t len = 0;
@@ -401,7 +495,12 @@ static void task(void *) {
       delay(200);
       continue;
     }
+    if (gResStale) {
+      gResStale = false;
+      fetchResolutions(host);
+    }
     if (gPhotoRequested) doPhoto(host);
+    if (gResRequested >= 0) doSetResolution(host);
     if (!gWanted) {
       if (state != STATE_IDLE) setState(STATE_IDLE, "");
       delay(100);
