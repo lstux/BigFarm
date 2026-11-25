@@ -1,5 +1,7 @@
 #include "bf_system.h"
 
+#include <Preferences.h>
+
 #include <esp_flash.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
@@ -31,6 +33,40 @@ String moduleId() {
   snprintf(buf, sizeof buf, "bf-%s-%02x%02x%02x", gType, static_cast<uint8_t>(mac >> 24),
            static_cast<uint8_t>(mac >> 32), static_cast<uint8_t>(mac >> 40));
   return String(buf);
+}
+
+bool validHostName(const String &n) {
+  if (n.length() < 1 || n.length() > 32) return false;
+  if (n[0] == '-' || n[n.length() - 1] == '-') return false;
+  for (size_t i = 0; i < n.length(); i++) {
+    const char c = n[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+  }
+  return true;
+}
+
+String hostName() {
+  Preferences p;
+  p.begin("bf-sys", true);
+  const String n = p.getString("nom", "");
+  p.end();
+  return validHostName(n) ? n : moduleId();
+}
+
+bool setHostName(const String &name) {
+  String n = name;
+  n.trim();
+  n.toLowerCase();
+  if (n.length() && !validHostName(n)) return false;
+  Preferences p;
+  p.begin("bf-sys", false);
+  if (n.length()) {
+    p.putString("nom", n);
+  } else {
+    p.remove("nom");
+  }
+  p.end();
+  return true;
 }
 
 String humanBytes(uint64_t bytes) {
@@ -78,6 +114,7 @@ void addSystemInfo(JsonWriter &json) {
   json.beginObject("systeme");
   json.add("module", moduleLabel());
   json.add("identifiant", moduleId());
+  json.add("nom_reseau", hostName() + ".local");
   json.add("firmware", firmwareVersion());
   json.add("compile_le", __DATE__ " " __TIME__);
   json.add("puce", ESP.getChipModel());

@@ -270,6 +270,58 @@ void benchmark(framesize_t size, uint8_t frames) {
                 static_cast<unsigned long>(gBench.avgMs), static_cast<unsigned>(gBench.avgBytes));
 }
 
+static void dropFrames(int n) {
+  for (int i = 0; i < n; i++) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (fb) esp_camera_fb_return(fb);
+  }
+}
+
+size_t captureToFile(fs::FS &fs, const String &path, framesize_t size, uint8_t quality, uint8_t led, String &error) {
+  sensor_t *s = esp_camera_sensor_get();
+  if (!gDiag.ok || s == nullptr) {
+    error = "caméra indisponible";
+    return 0;
+  }
+  if (size > maxFrameSize()) size = maxFrameSize();
+  if (quality < 4 || quality > 63) quality = gSettings.quality;
+
+  const bool changeSize = size != static_cast<framesize_t>(gSettings.frameSize);
+  const bool changeQuality = quality != gSettings.quality;
+  if (led > 0) ledcWrite(kLedChannel, led);
+  if (changeSize) s->set_framesize(s, size);
+  if (changeQuality) s->set_quality(s, quality);
+  // Images à jeter : changement de réglage, ou temps d'adaptation à la LED.
+  if (changeSize || changeQuality || led > 0) dropFrames(led > 0 ? 3 : 2);
+
+  camera_fb_t *fb = esp_camera_fb_get();
+  size_t written = 0;
+  if (fb == nullptr) {
+    error = "capture impossible";
+  } else {
+    File f = fs.open(path, FILE_WRITE);
+    if (!f) {
+      error = "impossible de créer le fichier";
+    } else {
+      written = f.write(fb->buf, fb->len);
+      f.close();
+      if (written != fb->len) {
+        fs.remove(path);
+        written = 0;
+        error = "écriture incomplète (carte pleine ?)";
+      }
+    }
+    esp_camera_fb_return(fb);
+  }
+
+  // Retour aux réglages du flux.
+  if (changeSize) s->set_framesize(s, static_cast<framesize_t>(gSettings.frameSize));
+  if (changeQuality) s->set_quality(s, gSettings.quality);
+  if (led > 0) ledcWrite(kLedChannel, gSettings.led);
+  if (changeSize || changeQuality) dropFrames(1);
+  return written;
+}
+
 void addDiag(bf::JsonWriter &j) {
   j.beginObject("camera");
   j.add("etat", gDiag.ok ? "OK" : "ÉCHEC");

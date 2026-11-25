@@ -62,6 +62,7 @@ Dans VS Code, ouvrir le dossier `firmware/cam` ou `firmware/central` comme proje
 - `/photos` : photos enregistrées sur la microSD (dossier `/photos`), avec téléchargement et suppression. Bouton « Enregistrer sur la carte » sur la page Caméra, commande série `photo`.
 - `/api/photo` (POST) : prend une photo et l'enregistre ; `/api/photos` : liste ; `/photo?nom=…` : un fichier.
 - Les photos sont nommées `AAAAMMJJ-HHMMSS.jpg` dès que l'heure est obtenue par NTP (fuseau Europe/Paris), `sansdate-00001.jpg` sinon.
+- `/timelapse` : **timelapse** — une image toutes les N secondes (10 s à 24 h) dans `/timelapse/<série>/` sur la microSD, avec sa propre résolution, qualité et LED (le flux en direct n'est pas modifié), plage horaire facultative (y compris sur la nuit). Reprise automatique après une coupure, arrêt si la carte est presque pleine. Liste des séries, lecteur dans le navigateur (2 à 15 images/s), téléchargement image par image, suppression d'une série.
 - `/api/info` : identité et adresses du module, utilisées par la centrale. Le module s'annonce aussi en mDNS (service `_bigfarm._tcp`, champ `type=cam`).
 
 Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus `mesure` et `sd` sur la caméra, `i2c` et `sd` sur la centrale.
@@ -77,6 +78,23 @@ Conseil : régler la caméra en VGA ou SVGA pour la centrale. Les grandes résol
 Commandes série en plus : `luminosite <10-255>`, `rotation <0|90|180|270>`, `page <0-5>`, `camera <ip>|auto`.
 
 Aperçu des écrans (rendu sur PC avec le même code) : [`docs/captures`](docs/captures). Pour le régénérer : `tools/ui-sim/build.sh`.
+
+### Nom sur le réseau et mises à jour sans fil
+
+- **Nom** : chaque module est joignable sur `http://<nom>.local/`. Par défaut c'est son identifiant (`bf-cam-9581b0`), qu'on peut changer sur la page `/wifi` (section « Nom sur le réseau »), avec la commande série `nom <nom>`, ou sur l'écran de la centrale (Réglages → Renommer).
+- **OTA depuis PlatformIO** : `pio run -d firmware/cam -e esp32cam-ota -t upload --upload-port <nom>.local` (centrale : `-e guition-4848s040-ota`). Mot de passe `bigfarm-setup`, déjà configuré.
+- **OTA depuis le navigateur** : page `/maj` du module, envoyer `.pio/build/<environnement>/firmware.bin`.
+
+### Wi-Fi depuis l'écran de la centrale
+
+Réglages → « Changer de réseau » : liste des réseaux détectés, mot de passe au clavier virtuel (AZERTY), puis la centrale redémarre et se connecte.
+
+### Rétroéclairage
+
+Le curseur de luminosité va de 5 à 100 %, réparti entre un seuil (en dessous, l'écran est noir) et le maximum. Calibrage par la console série :
+- `retro 120` : essaie un rapport cyclique brut (0-255), sans l'enregistrer ;
+- `retro min 120` : enregistre le seuil qui correspondra à 0 % ;
+- `retro freq 1000` : change la fréquence PWM (100 à 40000 Hz).
 
 ## Sécurité
 

@@ -21,7 +21,9 @@ static lv_disp_drv_t gDispDrv;
 static lv_indev_drv_t gIndevDrv;
 static lv_disp_t *gDisp = nullptr;
 static bool gReady = false;
-static uint8_t gBrightness = 200;
+static uint8_t gBrightness = 100;      // %
+static uint8_t gBacklightMin = 40;     // rapport cyclique pour 0 %
+static uint32_t gBacklightHz = 1000;   // fréquence PWM
 static uint16_t gRotation = 0;
 static uint8_t gTouchAddr = 0;
 static uint32_t gTouches = 0;
@@ -236,15 +238,51 @@ static lv_disp_rot_t toLvRotation(uint16_t deg) {
 
 bool ready() { return gReady; }
 uint8_t brightness() { return gBrightness; }
-uint16_t rotation() { return gRotation; }
+uint8_t backlightMin() { return gBacklightMin; }
+uint32_t backlightFrequency() { return gBacklightHz; }
 
-void setBrightness(uint8_t level) {
-  if (level < 10) level = 10;
-  gBrightness = level;
-  ledcWrite(kBacklightChannel, level);
+static uint8_t dutyFor(uint8_t percent) {
+  if (percent > 100) percent = 100;
+  return static_cast<uint8_t>(gBacklightMin + (255 - gBacklightMin) * static_cast<uint32_t>(percent) / 100);
+}
+
+void previewBrightness(uint8_t percent) {
+  if (percent < 5) percent = 5;
+  ledcWrite(kBacklightChannel, dutyFor(percent));
+}
+
+void setBacklightRaw(uint8_t duty) { ledcWrite(kBacklightChannel, duty); }
+
+void setBacklightMin(uint8_t duty) {
+  gBacklightMin = duty;
+  ledcWrite(kBacklightChannel, dutyFor(gBrightness));
   Preferences p;
   p.begin(kPrefs, false);
-  p.putUChar("lum", level);
+  p.putUChar("retro_min", duty);
+  p.end();
+}
+
+bool setBacklightFrequency(uint32_t hz) {
+  if (hz < 100 || hz > 40000) return false;
+  gBacklightHz = hz;
+  ledcSetup(kBacklightChannel, hz, 8);
+  ledcWrite(kBacklightChannel, dutyFor(gBrightness));
+  Preferences p;
+  p.begin(kPrefs, false);
+  p.putUInt("retro_hz", hz);
+  p.end();
+  return true;
+}
+uint16_t rotation() { return gRotation; }
+
+void setBrightness(uint8_t percent) {
+  if (percent < 5) percent = 5;
+  if (percent > 100) percent = 100;
+  gBrightness = percent;
+  ledcWrite(kBacklightChannel, dutyFor(percent));
+  Preferences p;
+  p.begin(kPrefs, false);
+  p.putUChar("lum_pct", percent);
   p.end();
 }
 
@@ -262,12 +300,15 @@ bool setRotation(uint16_t deg) {
 bool begin() {
   Preferences p;
   p.begin(kPrefs, true);
-  gBrightness = p.getUChar("lum", 200);
+  gBrightness = p.getUChar("lum_pct", 100);
+  gBacklightMin = p.getUChar("retro_min", 40);
+  gBacklightHz = p.getUInt("retro_hz", 1000);
+  if (gBacklightHz < 100 || gBacklightHz > 40000) gBacklightHz = 1000;
   gRotation = p.getUShort("rot", 0);
   p.end();
 
   // Rétroéclairage éteint pendant l'initialisation (évite le flash d'image aléatoire).
-  ledcSetup(kBacklightChannel, 5000, 8);
+  ledcSetup(kBacklightChannel, gBacklightHz, 8);
   ledcAttachPin(BOARD_BACKLIGHT, kBacklightChannel);
   ledcWrite(kBacklightChannel, 0);
 
@@ -318,7 +359,7 @@ bool begin() {
   gReady = true;
   // Premier rendu (écran noir), puis rétroéclairage.
   lv_timer_handler();
-  ledcWrite(kBacklightChannel, gBrightness);
+  ledcWrite(kBacklightChannel, dutyFor(gBrightness));
   Serial.println("[ecran] prêt");
   return true;
 }
@@ -332,7 +373,9 @@ void addStatus(bf::JsonWriter &j) {
   j.add("etat", gReady ? "OK" : "non initialisé");
   j.add("controleur", "ST7701S (RGB 16 bits)");
   j.add("resolution", "480x480");
-  j.add("luminosite", gBrightness);
+  j.add("luminosite_pct", gBrightness);
+  j.add("retro_seuil", gBacklightMin);
+  j.add("retro_frequence_hz", gBacklightHz);
   j.add("rotation", gRotation);
   if (gTouchAddr) {
     char a[8];

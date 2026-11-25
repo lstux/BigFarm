@@ -18,6 +18,7 @@
 #include "board_esp32cam.h"
 #include "camera.h"
 #include "photos.h"
+#include "timelapse.h"
 #include "stream.h"
 #include "web_page.h"
 
@@ -67,8 +68,10 @@ static String buildDiag() {
   stream::addStatus(j);
   bf::addStorage(j, "microsd", sdTest);
   photos::addStatus(j);
+  timelapse::addStatus(j);
   bf::addTime(j);
   wifi.addStatus(j);
+  bf::addOtaStatus(j);
   j.endObject();
   return j.str();
 }
@@ -99,7 +102,10 @@ static String buildInfo() {
   j.add(nullptr, "flux");
   j.add(nullptr, "photo");
   j.add(nullptr, "reglages");
-  if (photos::available()) j.add(nullptr, "stockage");
+  if (photos::available()) {
+    j.add(nullptr, "stockage");
+    j.add(nullptr, "timelapse");
+  }
   j.endArray();
   j.add("flux", "http://" + ip + ":" + String(stream::kPort) + "/stream");
   j.add("photo", "http://" + ip + "/capture");
@@ -204,6 +210,7 @@ static void handleCameraPage() {
 static void setupWeb() {
   bf::addNavLink("/", "Caméra");
   bf::addNavLink("/photos", "Photos");
+  bf::addNavLink("/timelapse", "Timelapse");
   bf::addNavLink("/diag", "Diagnostic");
   server.on("/", HTTP_GET, handleCameraPage);
   server.on("/diag", HTTP_GET, []() { bf::sendDiagPage(server, nullptr); });
@@ -213,6 +220,7 @@ static void setupWeb() {
   server.on("/api/camera", HTTP_POST, handleCameraPost);
   server.on("/capture", HTTP_GET, handleCapture);
   photos::registerRoutes(server);
+  timelapse::registerRoutes(server);
   server.begin();
   Serial.println("[web] serveur démarré sur le port 80");
 }
@@ -230,6 +238,9 @@ static void setupConsole() {
       return;
     }
     wifi.saveCredentials(ssid, pass);
+  });
+  console.add("nom", "nom <nom> : nom sur le réseau (<nom>.local), vide = par défaut", [](const String &args) {
+    if (!wifi.rename(args)) Serial.println("Nom invalide : minuscules, chiffres et tirets, 32 caractères au plus");
   });
   console.add("oublier", "oublie le réseau Wi-Fi et redémarre", [](const String &) { wifi.forget(); });
   console.add("mesure", "mesure de capture (SVGA, 10 images)",
@@ -270,16 +281,18 @@ void setup() {
   if (cam::begin()) cam::benchmark(FRAMESIZE_SVGA, 10);
   testSd();
   photos::begin(sdTest.mounted);
+  timelapse::begin(sdTest.mounted);
 
   wifi.begin(server, bf::moduleId());
   bf::timeBegin();
+  bf::otaBegin(server, bf::OtaHooks());
   setupWeb();
   stream::begin();
   setupConsole();
 
   printDiag();
-  Serial.printf("Caméra : http://%s/  ·  flux : http://%s:%u/stream\n", localIp().c_str(), localIp().c_str(),
-                stream::kPort);
+  Serial.printf("Caméra : http://%s.local/ (%s)  ·  flux : http://%s:%u/stream\n", bf::hostName().c_str(),
+                localIp().c_str(), localIp().c_str(), stream::kPort);
   Serial.println("Tapez « aide » pour la liste des commandes.");
   digitalWrite(CAM_PIN_STATUS_LED, LOW);  // allumée : démarrage terminé
 }
@@ -287,6 +300,8 @@ void setup() {
 void loop() {
   server.handleClient();
   wifi.loop();
+  bf::otaLoop();
+  timelapse::loop();
   console.loop(Serial);
   delay(2);
 }

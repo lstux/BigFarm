@@ -42,4 +42,26 @@ lv_obj_t *makeLabel(lv_obj_t *parent, const char *text, const lv_font_t *font, l
 // Nombre de modules connus / en ligne (affiché sur l'accueil).
 void setModuleCounts(uint8_t online, uint8_t total);
 
+// Saisie de texte plein écran avec clavier virtuel (AZERTY).
+// `done` reçoit le texte validé ; rien n'est appelé si l'utilisateur annule.
+typedef void (*TextDoneFn)(const char *text);
+void openTextInput(const char *title, const char *hint, const char *initial, bool password, uint8_t maxLen,
+                   TextDoneFn done);
+void closeTextInput();
+
+// Panneau d'information plein écran (mise à jour, redémarrage…).
+// percent < 0 : pas de barre de progression. Affiché immédiatement.
+void showOverlay(const char *title, const char *text, int percent);
+void hideOverlay();
+
+// Boîte de message simple avec un bouton OK.
+void showMessage(const char *title, const char *text);
+
+// Actions fournies par main.cpp (Wi-Fi, renommage).
+struct Actions {
+  void (*openWifiPanel)() = nullptr;
+  bool (*rename)(const char *name) = nullptr;
+};
+void setActions(const Actions &actions);
+
 }  // namespace ui
