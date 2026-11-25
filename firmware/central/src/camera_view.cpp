@@ -21,6 +21,8 @@ static lv_obj_t *gImg = nullptr;
 static lv_obj_t *gPlaceholder = nullptr;
 static lv_obj_t *gInfo = nullptr;
 static lv_obj_t *gPauseLabel = nullptr;
+static lv_obj_t *gResLabel = nullptr;
+static lv_obj_t *gResMenu = nullptr;
 static bool gPaused = false;
 
 // Plein écran
@@ -91,6 +93,62 @@ static void openFullCb(lv_event_t *) {
   lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -6);
 }
 
+// Choix de la résolution (valable pour le flux et pour les photos).
+static void closeResMenu() {
+  if (gResMenu != nullptr) {
+    lv_obj_del(gResMenu);
+    gResMenu = nullptr;
+  }
+}
+
+static void resPickCb(lv_event_t *e) {
+  const int id = static_cast<int>(reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+  camclient::setResolution(id);
+  gTransient = "Résolution demandée…";
+  gTransientUntil = millis() + 4000;
+  closeResMenu();
+}
+
+static void resCancelCb(lv_event_t *) { closeResMenu(); }
+
+static void openResMenu(lv_event_t *) {
+  const int n = camclient::resolutionCount();
+  if (gResMenu != nullptr || n == 0) return;
+  gResMenu = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(gResMenu, 480, 480);
+  lv_obj_set_style_bg_color(gResMenu, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(gResMenu, LV_OPA_90, 0);
+  lv_obj_set_style_border_width(gResMenu, 0, 0);
+  lv_obj_set_style_radius(gResMenu, 0, 0);
+  lv_obj_set_style_pad_all(gResMenu, 12, 0);
+  lv_obj_set_style_pad_row(gResMenu, 6, 0);
+  lv_obj_set_flex_flow(gResMenu, LV_FLEX_FLOW_COLUMN);
+  lv_obj_add_flag(gResMenu, LV_OBJ_FLAG_SCROLLABLE);
+  ui::makeLabel(gResMenu, "Résolution (flux et photos)", &bf_font_18, ui::colorText());
+  const int current = camclient::currentResolutionId();
+  for (int i = n - 1; i >= 0; i--) {  // de la plus grande à la plus petite
+    const int id = camclient::resolutionId(i);
+    lv_obj_t *b = lv_btn_create(gResMenu);
+    lv_obj_set_size(b, 440, 40);
+    lv_obj_set_style_bg_color(b, id == current ? ui::colorAccent() : lv_color_hex(0x2A363D), 0);
+    lv_obj_set_style_radius(b, 8, 0);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, camclient::resolutionName(i).c_str());
+    lv_obj_set_style_text_font(l, &bf_font_18, 0);
+    lv_obj_center(l);
+    lv_obj_add_event_cb(b, resPickCb, LV_EVENT_CLICKED, reinterpret_cast<void *>(static_cast<intptr_t>(id)));
+  }
+  lv_obj_t *c = lv_btn_create(gResMenu);
+  lv_obj_set_size(c, 440, 40);
+  lv_obj_set_style_bg_color(c, lv_color_hex(0x444444), 0);
+  lv_obj_set_style_radius(c, 8, 0);
+  lv_obj_t *cl = lv_label_create(c);
+  lv_label_set_text(cl, "Annuler");
+  lv_obj_set_style_text_font(cl, &bf_font_18, 0);
+  lv_obj_center(cl);
+  lv_obj_add_event_cb(c, resCancelCb, LV_EVENT_CLICKED, nullptr);
+}
+
 static lv_obj_t *smallButton(lv_obj_t *parent, const char *text, lv_event_cb_t cb, lv_obj_t **labelOut) {
   lv_obj_t *b = lv_btn_create(parent);
   lv_obj_set_height(b, 40);
@@ -145,16 +203,20 @@ void buildPage(lv_obj_t *page) {
 
   gInfo = ui::makeLabel(row, "", &bf_font_14, ui::colorMuted());
   lv_label_set_long_mode(gInfo, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(gInfo, 220);
+  lv_obj_set_width(gInfo, 150);
   lv_obj_align(gInfo, LV_ALIGN_LEFT_MID, 0, 0);
 
   lv_obj_t *pause = smallButton(row, LV_SYMBOL_PAUSE " Pause", pauseCb, &gPauseLabel);
-  lv_obj_set_width(pause, 110);
+  lv_obj_set_width(pause, 100);
   lv_obj_set_style_bg_color(pause, lv_color_hex(0x2A363D), 0);
   lv_obj_align(pause, LV_ALIGN_RIGHT_MID, 0, 0);
   lv_obj_t *photo = smallButton(row, LV_SYMBOL_IMAGE " Photo", photoCb, nullptr);
-  lv_obj_set_width(photo, 110);
-  lv_obj_align_to(photo, pause, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+  lv_obj_set_width(photo, 100);
+  lv_obj_align_to(photo, pause, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+  lv_obj_t *res = smallButton(row, "Rés.", openResMenu, &gResLabel);
+  lv_obj_set_style_bg_color(res, lv_color_hex(0x2A363D), 0);
+  lv_obj_set_width(res, 100);
+  lv_obj_align_to(res, photo, LV_ALIGN_OUT_LEFT_MID, -6, 0);
 }
 
 void buildHome(lv_obj_t *card) {
@@ -213,8 +275,8 @@ static void updateTexts(const camclient::Status &s) {
   const bool fresh = s.lastFrameMs != 0 && millis() - s.lastFrameMs < 5000;
   char info[128];
   if (s.state == camclient::STATE_LIVE && fresh) {
-    snprintf(info, sizeof info, "En direct · %.1f img/s\n%ux%u · décodage %lu ms", static_cast<double>(s.fps),
-             s.sourceWidth, s.sourceHeight, static_cast<unsigned long>(s.decodeMs));
+    snprintf(info, sizeof info, "En direct\n%.1f img/s · %lu ms", static_cast<double>(s.fps),
+             static_cast<unsigned long>(s.decodeMs));
   } else if (gPaused && s.host.length()) {
     snprintf(info, sizeof info, "En pause · %s", s.host.c_str());
   } else {
@@ -229,6 +291,20 @@ static void updateTexts(const camclient::Status &s) {
       gTransient = r;
       gTransientUntil = millis() + 5000;
     }
+  }
+  // Bouton de résolution : taille courante (« 800x600 »), sinon « Rés. ».
+  if (gResLabel != nullptr) {
+    String t = "Rés.";
+    const int cur = camclient::currentResolutionId();
+    for (int i = 0; i < camclient::resolutionCount(); i++) {
+      if (camclient::resolutionId(i) == cur) {
+        const String n = camclient::resolutionName(i);
+        const int sp = n.indexOf(' ');
+        t = sp >= 0 ? n.substring(sp + 1) : n;
+        break;
+      }
+    }
+    if (t != lv_label_get_text(gResLabel)) lv_label_set_text(gResLabel, t.c_str());
   }
   const bool transient = gTransient.length() && millis() < gTransientUntil;
   lv_label_set_text(gInfo, transient ? gTransient.c_str() : info);

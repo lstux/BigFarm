@@ -68,6 +68,15 @@ void requestPhoto();
 // Résultat de la dernière demande de photo ("" si aucune ou en cours).
 String photoResult();
 
+// Résolutions proposées par la caméra (lues sur /api/camera) et réglage courant.
+// Le réglage est celui de la caméra : il vaut pour le flux ET pour les photos.
+int resolutionCount();
+String resolutionName(int index);  // ex. « SVGA 800x600 »
+int resolutionId(int index);
+int currentResolutionId();         // -1 si inconnue
+// Demande à la caméra de changer de résolution (asynchrone).
+void setResolution(int id);
+
 void addStatus(bf::JsonWriter &json);
 
 // Taille maximale d'une image affichée (le décodeur réduit 1/2, 1/4 ou 1/8 au besoin).
