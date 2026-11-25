@@ -19,7 +19,10 @@ firmware/
   cam/        BigFarm Cam (ESP32-CAM)            projet PlatformIO
   central/    BigFarm Central (Guition ESP32-S3) projet PlatformIO
   common/     BigFarmCore : code partagé (identité, diagnostic, Wi-Fi, console, pages web)
+tools/
+  ui-sim/     simulateur PC de l'interface de la centrale (rend les pages en PNG)
 docs/
+  captures/     aperçus des écrans de la centrale
   materiel.md   fiche matériel vérifiée (à compléter avec les diagnostics)
   decisions.md  décisions techniques
 ```
@@ -62,6 +65,14 @@ Dans VS Code, ouvrir le dossier `firmware/cam` ou `firmware/central` comme proje
 - `/api/info` : identité et adresses du module, utilisées par la centrale. Le module s'annonce aussi en mDNS (service `_bigfarm._tcp`, champ `type=cam`).
 
 Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus `mesure` et `sd` sur la caméra, `i2c` et `sd` sur la centrale.
+
+### Centrale
+
+L'écran tactile affiche l'interface BigFarm : barre d'état (heure, Wi-Fi), six sections (Accueil, Caméra, Mesures, Commandes, Modules, Réglages). Dans Réglages : état du Wi-Fi, luminosité et rotation de l'écran (enregistrées), informations système, redémarrage.
+
+Commandes série en plus : `luminosite <10-255>`, `rotation <0|90|180|270>`, `page <0-5>`.
+
+Aperçu des écrans (rendu sur PC avec le même code) : [`docs/captures`](docs/captures). Pour le régénérer : `tools/ui-sim/build.sh`.
 
 ## Sécurité
 
