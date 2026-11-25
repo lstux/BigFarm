@@ -245,8 +245,47 @@ static bool decodeFrame(size_t len) {
 // ---------------------------------------------------------------------------
 // Flux MJPEG
 
+// Lectures sur le socket qui rendent la main au planificateur quand rien n'est
+// disponible. Stream::readBytes()/readStringUntil() attendent en boucle active :
+// avec un réseau lent, la tâche monopolisait le cœur 0 et le watchdog redémarrait
+// la carte (IDLE0 jamais exécutée).
+static const uint32_t kReadTimeoutMs = 5000;
+
+static size_t readYield(WiFiClient &c, uint8_t *buf, size_t len) {
+  size_t got = 0;
+  uint32_t last = millis();
+  while (got < len) {
+    const int avail = c.available();
+    if (avail > 0) {
+      const size_t want = len - got;
+      const int n = c.read(buf + got, want < static_cast<size_t>(avail) ? want : static_cast<size_t>(avail));
+      if (n > 0) {
+        got += n;
+        last = millis();
+        continue;
+      }
+    }
+    if (!c.connected() || millis() - last > kReadTimeoutMs) break;
+    vTaskDelay(1);
+  }
+  return got;
+}
+
 static bool readLine(WiFiClient &c, String &line) {
-  line = c.readStringUntil('\n');
+  line = "";
+  uint32_t last = millis();
+  while (true) {
+    if (c.available() > 0) {
+      const int ch = c.read();
+      if (ch < 0) continue;
+      last = millis();
+      if (ch == '\n') break;
+      line += static_cast<char>(ch);
+      continue;
+    }
+    if (!c.connected() || millis() - last > kReadTimeoutMs) break;
+    vTaskDelay(1);
+  }
   line.trim();
   return c.connected() || c.available();
 }
@@ -297,7 +336,7 @@ static void streamSession(const String &host) {
       size_t left = len;
       uint8_t sink[512];
       while (left > 0 && c.connected()) {
-        const size_t n = c.readBytes(sink, left > sizeof sink ? sizeof sink : left);
+        const size_t n = readYield(c, sink, left > sizeof sink ? sizeof sink : left);
         if (n == 0) break;
         left -= n;
       }
@@ -305,7 +344,7 @@ static void streamSession(const String &host) {
       gStatus.message = "image trop grande, baisser la résolution de la caméra";
       continue;
     }
-    if (c.readBytes(gJpeg, len) != len) break;
+    if (readYield(c, gJpeg, len) != len) break;
 
     if (decodeFrame(len)) {
       lastFrame = millis();
