@@ -44,6 +44,11 @@ bool takeFrame(uint32_t seq, Frame &out) {
   out.pixels = pix.data(); out.width = 400; out.height = 300; out.sequence = 1;
   return true;
 }
+int resolutionCount() { return 3; }
+String resolutionName(int i) { static const char *n[] = {"VGA 640x480", "SVGA 800x600", "UXGA 1600x1200"}; return n[i]; }
+int resolutionId(int i) { static const int id[] = {8, 9, 13}; return id[i]; }
+int currentResolutionId() { return 9; }
+void setResolution(int) {}
 void requestPhoto() {}
 String photoResult() { return ""; }
 void addStatus(bf::JsonWriter &) {}

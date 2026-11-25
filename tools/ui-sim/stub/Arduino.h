@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <ctime>
+#include <cstdlib>
 struct String : std::string {
   String() {}
   String(const char *s) : std::string(s ? s : "") {}
@@ -13,6 +14,11 @@ struct String : std::string {
   String(long v) : std::string(std::to_string(v)) {}
   const char *c_str() const { return std::string::c_str(); }
   size_t length() const { return size(); }
+  int indexOf(char c, size_t from = 0) const { size_t p = find(c, from); return p == npos ? -1 : (int)p; }
+  int indexOf(const char *t, size_t from = 0) const { size_t p = find(t, from); return p == npos ? -1 : (int)p; }
+  String substring(size_t a) const { return a >= size() ? String() : String(substr(a)); }
+  String substring(size_t a, size_t b) const { return a >= size() || b <= a ? String() : String(substr(a, b - a)); }
+  long toInt() const { return atol(c_str()); }
   void trim() {
     size_t b = find_first_not_of(" \t\r\n");
     size_t e = find_last_not_of(" \t\r\n");
