@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 
+#include "bf_system.h"
 #include "bf_web.h"
 
 namespace bf {
@@ -35,6 +36,11 @@ void WifiSetup::begin(WebServer &server, const String &moduleId) {
 
   if (MDNS.begin(id_.c_str())) {
     MDNS.addService("http", "tcp", 80);
+    // Service BigFarm : permet à la centrale de découvrir les modules.
+    MDNS.addService("bigfarm", "tcp", 80);
+    MDNS.addServiceTxt("bigfarm", "tcp", "type", moduleType());
+    MDNS.addServiceTxt("bigfarm", "tcp", "id", id_.c_str());
+    MDNS.addServiceTxt("bigfarm", "tcp", "fw", firmwareVersion());
     Serial.printf("[wifi] mDNS : http://%s.local/\n", id_.c_str());
   }
 

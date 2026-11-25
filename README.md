@@ -48,7 +48,15 @@ Dans VS Code, ouvrir le dossier `firmware/cam` ou `firmware/central` comme proje
 2. Sans réseau enregistré, le module ouvre un point d'accès **`BigFarm-cam-xxxxxx`** ou **`BigFarm-central-xxxxxx`**, mot de passe **`bigfarm-setup`**. S'y connecter : la page de configuration Wi-Fi s'ouvre (sinon aller sur `http://192.168.4.1/wifi`).
    - Ou depuis le moniteur série : `wifi "Nom du réseau" motdepasse`.
 3. Une fois connecté, le module est joignable sur `http://bf-cam-xxxxxx.local/` (ou son adresse IP, affichée sur le port série).
-4. Page `/` : diagnostic lisible. Page `/api/diag` : le même diagnostic en JSON. Sur la caméra, bouton « Prendre une photo » (`/capture`).
+4. Page `/diag` : diagnostic lisible (sur la centrale : `/`). Page `/api/diag` : le même diagnostic en JSON.
+
+### Module caméra
+
+- `/` : page **Caméra** — flux en direct, photo, réglages (résolution, qualité, luminosité, contraste, saturation, miroirs, automatismes, LED blanche, limite d'images/s). Les réglages sont enregistrés dans le module et réappliqués au démarrage.
+- `http://<module>:81/stream` : flux MJPEG brut (jusqu'à 3 clients simultanés, par exemple la centrale et un navigateur).
+- `/capture` : une photo JPEG.
+- `/api/camera` : réglages en JSON (GET) ; modification par POST (champs de formulaire : `resolution`, `qualite`, `luminosite`, `contraste`, `saturation`, `led`, `ips_max`, `miroir_vertical`, `miroir_horizontal`, `balance_blancs_auto`, `exposition_auto`, `gain_auto`).
+- `/api/info` : identité et adresses du module, utilisées par la centrale. Le module s'annonce aussi en mDNS (service `_bigfarm._tcp`, champ `type=cam`).
 
 Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus `mesure` et `sd` sur la caméra, `i2c` et `sd` sur la centrale.
 
