@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <BigFarmCore.h>
+#include <FS.h>
 #include <esp_camera.h>
 
 // Service caméra : initialisation, réglages persistants, mesure de capture.
@@ -40,6 +41,11 @@ const char *resolutionName(framesize_t size);
 // Mesure de capture : plusieurs images à une résolution donnée, puis retour à la
 // résolution réglée.
 void benchmark(framesize_t size, uint8_t frames);
+
+// Capture une image avec des réglages ponctuels (résolution, qualité, LED),
+// l'écrit dans un fichier puis rétablit les réglages du flux.
+// led = 0 : LED laissée à son réglage habituel. Renvoie la taille écrite, 0 en cas d'échec.
+size_t captureToFile(fs::FS &fs, const String &path, framesize_t size, uint8_t quality, uint8_t led, String &error);
 
 void addDiag(bf::JsonWriter &json);      // section "camera" du diagnostic
 void addSettings(bf::JsonWriter &json);  // "reglages" + "resolutions"

@@ -18,6 +18,7 @@
 #include "board_esp32cam.h"
 #include "camera.h"
 #include "photos.h"
+#include "timelapse.h"
 #include "stream.h"
 #include "web_page.h"
 
@@ -67,6 +68,7 @@ static String buildDiag() {
   stream::addStatus(j);
   bf::addStorage(j, "microsd", sdTest);
   photos::addStatus(j);
+  timelapse::addStatus(j);
   bf::addTime(j);
   wifi.addStatus(j);
   bf::addOtaStatus(j);
@@ -100,7 +102,10 @@ static String buildInfo() {
   j.add(nullptr, "flux");
   j.add(nullptr, "photo");
   j.add(nullptr, "reglages");
-  if (photos::available()) j.add(nullptr, "stockage");
+  if (photos::available()) {
+    j.add(nullptr, "stockage");
+    j.add(nullptr, "timelapse");
+  }
   j.endArray();
   j.add("flux", "http://" + ip + ":" + String(stream::kPort) + "/stream");
   j.add("photo", "http://" + ip + "/capture");
@@ -205,6 +210,7 @@ static void handleCameraPage() {
 static void setupWeb() {
   bf::addNavLink("/", "Caméra");
   bf::addNavLink("/photos", "Photos");
+  bf::addNavLink("/timelapse", "Timelapse");
   bf::addNavLink("/diag", "Diagnostic");
   server.on("/", HTTP_GET, handleCameraPage);
   server.on("/diag", HTTP_GET, []() { bf::sendDiagPage(server, nullptr); });
@@ -214,6 +220,7 @@ static void setupWeb() {
   server.on("/api/camera", HTTP_POST, handleCameraPost);
   server.on("/capture", HTTP_GET, handleCapture);
   photos::registerRoutes(server);
+  timelapse::registerRoutes(server);
   server.begin();
   Serial.println("[web] serveur démarré sur le port 80");
 }
@@ -274,6 +281,7 @@ void setup() {
   if (cam::begin()) cam::benchmark(FRAMESIZE_SVGA, 10);
   testSd();
   photos::begin(sdTest.mounted);
+  timelapse::begin(sdTest.mounted);
 
   wifi.begin(server, bf::moduleId());
   bf::timeBegin();
@@ -293,6 +301,7 @@ void loop() {
   server.handleClient();
   wifi.loop();
   bf::otaLoop();
+  timelapse::loop();
   console.loop(Serial);
   delay(2);
 }
