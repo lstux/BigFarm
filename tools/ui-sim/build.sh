@@ -19,7 +19,7 @@ if [ ! -f obj/liblvgl.a ]; then
   ar rcs obj/liblvgl.a obj/*.o
 fi
 for f in "$CENTRAL"/src/fonts/*.c; do gcc $CF -c "$f" -o "obj/font_$(basename "$f" .c).fo"; done
-g++ -std=gnu++11 $CF -Istub -I"$CENTRAL/src" sim.cpp "$CENTRAL/src/ui.cpp" obj/*.fo obj/liblvgl.a -o sim
+g++ -std=gnu++11 $CF -Istub -I"$CENTRAL/src" sim.cpp "$CENTRAL/src/ui.cpp" "$CENTRAL/src/camera_view.cpp" obj/*.fo obj/liblvgl.a -o sim
 ./sim
 python3 - <<'PY'
 from PIL import Image

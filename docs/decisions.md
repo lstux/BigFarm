@@ -22,3 +22,11 @@ Les décisions sont datées. Une décision peut être revue : on ajoute alors un
 - **Rotation logicielle** réglable (0/90/180/270°) : l'orientation physique du boîtier n'est pas connue à l'avance.
 - **Sorties de la carte fille** affichées mais désactivées tant que la carte n'est pas validée.
 - **Simulateur PC** (`tools/ui-sim`) : rend l'interface en PNG sans la carte, pour itérer sur l'UI.
+
+## 2026-11-25 — Caméra affichée sur la centrale
+
+- **Découverte** par mDNS (`_bigfarm._tcp`, champ `type`), confirmée par `/api/info` du module. Adresse fixable à la main en repli (NVS).
+- **Flux** : la centrale lit le MJPEG du port 81 dans une tâche du cœur 0. Décodage JPEGDEC 1.8.2 (instructions SIMD de l'ESP32-S3) en RGB565, avec réduction 1/2, 1/4 ou 1/8 pour tenir dans 456×300. Trois tampons en PSRAM : un affiché, un en attente, un en écriture. L'interface ne bloque jamais sur le réseau.
+- **Économie** : le flux n'est demandé que si la page Caméra, l'Accueil ou le plein écran sont affichés.
+- **États explicites** à l'écran : recherche, introuvable, connexion, en direct, interrompu, avec l'âge de la dernière image (« Dernière image il y a 12 s »).
+- La photo est déclenchée depuis la centrale, mais **enregistrée par la caméra** sur sa microSD. Le transfert vers la centrale relève du Jalon 3 (bibliothèque de médias).

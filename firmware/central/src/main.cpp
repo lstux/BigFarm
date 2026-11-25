@@ -1,6 +1,7 @@
 // BigFarm Central.
 //
 // - Écran tactile 480x480 (LVGL) : Accueil, Caméra, Mesures, Commandes, Modules, Réglages.
+// - Caméra : découverte automatique (mDNS) du module BigFarm Cam, flux affiché à l'écran.
 // - Diagnostic au démarrage : mémoire réelle, PSRAM, bus du tactile (GT911), microSD.
 // - Web : diagnostic (/) et configuration Wi-Fi ; console série (« aide »).
 //
@@ -16,6 +17,8 @@
 #include <vector>
 
 #include "board_guition_4848s040.h"
+#include "camera_client.h"
+#include "camera_view.h"
 #include "display.h"
 #include "ui.h"
 
@@ -146,6 +149,7 @@ static String buildDiag() {
   addTouch(j);
   bf::addStorage(j, "microsd", sdTest);
   display::addStatus(j);
+  camclient::addStatus(j);
   bf::addTime(j);
   j.beginObject("sorties");
   j.add("etat", "non pilotées (carte fille à identifier avant tout usage)");
@@ -164,8 +168,30 @@ static void printDiag() {
 // ---------------------------------------------------------------------------
 // Web et console
 
+static const char kCameraFormHtml[] PROGMEM = R"HTML(
+<section><h2>Caméra BigFarm</h2>
+<p>La centrale cherche la caméra automatiquement sur le réseau. Pour fixer son adresse :</p>
+<form method="post" action="/camera"><label for="hote">Adresse IP de la caméra (vide = automatique)</label>
+<input id="hote" name="hote" placeholder="192.168.1.50" pattern="[0-9.]*"> <button type="submit">Enregistrer</button></form>
+</section>
+)HTML";
+
+static void handleCameraHost() {
+  String host = server.arg("hote");
+  host.trim();
+  IPAddress ip;
+  if (host.length() && !ip.fromString(host)) {
+    server.send(400, "text/plain; charset=utf-8", "Adresse IP invalide");
+    return;
+  }
+  camclient::setManualHost(host);
+  server.sendHeader("Location", "/", true);
+  server.send(303, "text/plain", "");
+}
+
 static void setupWeb() {
-  server.on("/", HTTP_GET, []() { bf::sendDiagPage(server, nullptr); });
+  server.on("/", HTTP_GET, []() { bf::sendDiagPage(server, kCameraFormHtml); });
+  server.on("/camera", HTTP_POST, handleCameraHost);
   server.on("/api/diag", HTTP_GET, []() {
     server.sendHeader("Cache-Control", "no-store");
     server.send(200, "application/json", buildDiag());
@@ -202,6 +228,21 @@ static void setupConsole() {
   console.add("rotation", "rotation <0|90|180|270> : orientation de l'écran", [](const String &args) {
     if (!display::setRotation(static_cast<uint16_t>(args.toInt()))) Serial.println("Usage : rotation <0|90|180|270>");
   });
+  console.add("camera", "camera <ip> : fixe l'adresse de la caméra ; camera auto : découverte automatique",
+              [](const String &args) {
+                String a = args;
+                a.trim();
+                IPAddress ip;
+                if (a == "auto" || a.length() == 0) {
+                  camclient::setManualHost("");
+                  Serial.println("Caméra : découverte automatique");
+                } else if (ip.fromString(a)) {
+                  camclient::setManualHost(a);
+                  Serial.printf("Caméra : adresse fixée à %s\n", a.c_str());
+                } else {
+                  Serial.println("Usage : camera <ip> | camera auto");
+                }
+              });
   console.add("page", "page <0-5> : affiche une page de l'écran", [](const String &args) {
     ui::showPage(static_cast<ui::Page>(args.toInt()));
   });
@@ -235,6 +276,7 @@ void setup() {
   if (screen) ui::showSplash("Connexion au Wi-Fi…");
   wifi.begin(server, bf::moduleId());
   bf::timeBegin();
+  camclient::begin();
   setupWeb();
   setupConsole();
   if (screen) ui::begin();
@@ -247,6 +289,7 @@ void loop() {
   server.handleClient();
   wifi.loop();
   console.loop(Serial);
+  if (display::ready()) camview::loop();
   display::loop();
 
   static uint32_t lastTick = 0;
