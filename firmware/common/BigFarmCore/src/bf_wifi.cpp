@@ -78,7 +78,8 @@ bool WifiSetup::connectStation(uint32_t timeoutMs) {
 }
 
 void WifiSetup::startAp() {
-  WiFi.mode(ssid_.length() ? WIFI_AP_STA : WIFI_AP);
+  // Station toujours active à côté du point d'accès : le scan des réseaux en a besoin.
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(apSsid_.c_str(), kApPassword);
   delay(100);
   dns_.start(53, "*", WiFi.softAPIP());
@@ -167,33 +168,80 @@ void WifiSetup::addStatus(JsonWriter &json) const {
   json.endObject();
 }
 
+static String signalBars(int32_t rssi) {
+  if (rssi >= -55) return "▂▄▆█";
+  if (rssi >= -67) return "▂▄▆";
+  if (rssi >= -78) return "▂▄";
+  return "▂";
+}
+
 void WifiSetup::handlePage() {
   // Le scan prend 2 à 3 secondes.
-  const int16_t n = WiFi.scanNetworks();
+  int16_t n = WiFi.scanNetworks(false, false);
+  if (n < 0) {
+    // Un scan précédent a pu échouer : on nettoie et on réessaie une fois.
+    WiFi.scanDelete();
+    delay(100);
+    n = WiFi.scanNetworks(false, false);
+  }
+  Serial.printf("[wifi] scan : %d réseau(x)\n", n);
+
   String page = pageHeader("Wi-Fi — " + id_);
+  page += F("<style>.reseaux{display:flex;flex-direction:column;gap:6px;margin:6px 0 4px}"
+            ".reseaux button{display:flex;justify-content:space-between;background:#eef3f1;color:#1c2421;"
+            "border:1px solid #cdd8d4;text-align:left}.reseaux button.choisi{border-color:#1fbf8f;background:#dff6ee}"
+            ".sig{color:#1fbf8f;letter-spacing:-1px;white-space:nowrap;margin-left:12px}</style>");
   page += F("<section><h2>État</h2><p>");
   if (connected()) {
     page += "Connecté à « " + htmlEscape(WiFi.SSID()) + " », adresse " + WiFi.localIP().toString() + ".";
   } else {
     page += F("Non connecté à un réseau.");
   }
-  page += F("</p></section><section><h2>Choisir un réseau</h2>"
+  page += F("</p></section><section><h2>Réseaux détectés</h2>");
+  if (n < 0) {
+    page += F("<p>La recherche des réseaux a échoué. <a href=\"/wifi\">Réessayer</a> ou saisir le nom à la main.</p>");
+  } else if (n == 0) {
+    page += F("<p>Aucun réseau détecté. <a href=\"/wifi\">Réessayer</a> ou saisir le nom à la main.</p>");
+  } else {
+    page += F("<p>Toucher un réseau pour le choisir, puis saisir son mot de passe.</p><div class=\"reseaux\">");
+    int shown = 0;
+    for (int16_t i = 0; i < n && shown < 20; i++) {
+      const String ssid = WiFi.SSID(i);
+      if (ssid.length() == 0) continue;  // réseau masqué
+      bool duplicate = false;  // même nom sur plusieurs bornes : on garde le meilleur signal (déjà en premier)
+      for (int16_t k = 0; k < i; k++) {
+        if (WiFi.SSID(k) == ssid) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (duplicate) continue;
+      const bool open = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+      page += "<button type=\"button\" data-ssid=\"" + htmlEscape(ssid) + "\"><span>" + htmlEscape(ssid) +
+              (open ? " (ouvert)" : "") + "</span><span class=\"sig\">" + signalBars(WiFi.RSSI(i)) + " " +
+              String(WiFi.RSSI(i)) + " dBm</span></button>";
+      shown++;
+    }
+    page += F("</div><p><a href=\"/wifi\">Actualiser la liste</a></p>");
+  }
+  page += F("</section><section><h2>Se connecter</h2>"
             "<form method=\"post\" action=\"/wifi\">"
             "<label for=\"ssid\">Nom du réseau</label>"
-            "<input id=\"ssid\" name=\"ssid\" list=\"reseaux\" required autocomplete=\"off\" value=\"");
+            "<input id=\"ssid\" name=\"ssid\" required autocomplete=\"off\" autocapitalize=\"off\" value=\"");
   page += htmlEscape(ssid_);
-  page += F("\"><datalist id=\"reseaux\">");
-  for (int16_t i = 0; i < n; i++) {
-    page += "<option value=\"" + htmlEscape(WiFi.SSID(i)) + "\">" + String(WiFi.RSSI(i)) + " dBm</option>";
-  }
-  page += F("</datalist>"
-            "<label for=\"pass\">Mot de passe</label>"
+  page += F("\"><label for=\"pass\">Mot de passe</label>"
             "<input id=\"pass\" name=\"pass\" type=\"password\" autocomplete=\"off\">"
+            "<p><label style=\"display:inline\"><input type=\"checkbox\" "
+            "onchange=\"document.getElementById('pass').type=this.checked?'text':'password'\"> Afficher</label></p>"
             "<p><button type=\"submit\">Enregistrer et redémarrer</button></p></form></section>"
             "<section><h2>Oublier le réseau</h2>"
             "<form method=\"post\" action=\"/wifi/oublier\" "
             "onsubmit=\"return confirm('Oublier le réseau et redémarrer en point d\\'accès ?')\">"
-            "<button class=\"second\" type=\"submit\">Oublier et redémarrer</button></form></section>");
+            "<button class=\"second\" type=\"submit\">Oublier et redémarrer</button></form></section>"
+            "<script>document.querySelectorAll('.reseaux button').forEach(function(b){b.onclick=function(){"
+            "document.querySelectorAll('.reseaux button').forEach(function(x){x.className='';});b.className='choisi';"
+            "document.getElementById('ssid').value=b.getAttribute('data-ssid');"
+            "var p=document.getElementById('pass');p.value='';p.focus();};});</script>");
   page += pageFooter();
   WiFi.scanDelete();
   server_->send(200, "text/html; charset=utf-8", page);
