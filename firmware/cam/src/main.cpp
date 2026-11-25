@@ -2,8 +2,10 @@
 //
 // - Page « Caméra » (/) : flux en direct, photo, réglages enregistrés.
 // - Flux MJPEG : http://<module>:81/stream
+// - Page « Photos » (/photos) : photos enregistrées sur la microSD.
 // - API : /api/camera (réglages, GET/POST), /api/info (identité, pour la centrale),
-//   /api/diag (diagnostic complet), /capture (photo JPEG).
+//   /api/diag (diagnostic complet), /capture (photo JPEG sans enregistrement),
+//   /api/photo (POST : photo enregistrée sur la microSD), /api/photos (liste).
 // - Page « Diagnostic » (/diag) et console série (« aide »).
 
 #include <Arduino.h>
@@ -15,6 +17,7 @@
 
 #include "board_esp32cam.h"
 #include "camera.h"
+#include "photos.h"
 #include "stream.h"
 #include "web_page.h"
 
@@ -63,6 +66,8 @@ static String buildDiag() {
   cam::addDiag(j);
   stream::addStatus(j);
   bf::addStorage(j, "microsd", sdTest);
+  photos::addStatus(j);
+  bf::addTime(j);
   wifi.addStatus(j);
   j.endObject();
   return j.str();
@@ -94,10 +99,12 @@ static String buildInfo() {
   j.add(nullptr, "flux");
   j.add(nullptr, "photo");
   j.add(nullptr, "reglages");
+  if (photos::available()) j.add(nullptr, "stockage");
   j.endArray();
   j.add("flux", "http://" + ip + ":" + String(stream::kPort) + "/stream");
   j.add("photo", "http://" + ip + "/capture");
   j.add("reglages", "http://" + ip + "/api/camera");
+  j.add("enregistrer_photo", "http://" + ip + "/api/photo");
   j.endObject();
   return j.str();
 }
@@ -196,6 +203,7 @@ static void handleCameraPage() {
 
 static void setupWeb() {
   bf::addNavLink("/", "Caméra");
+  bf::addNavLink("/photos", "Photos");
   bf::addNavLink("/diag", "Diagnostic");
   server.on("/", HTTP_GET, handleCameraPage);
   server.on("/diag", HTTP_GET, []() { bf::sendDiagPage(server, nullptr); });
@@ -204,6 +212,7 @@ static void setupWeb() {
   server.on("/api/camera", HTTP_GET, []() { sendJson(200, buildCameraJson(nullptr)); });
   server.on("/api/camera", HTTP_POST, handleCameraPost);
   server.on("/capture", HTTP_GET, handleCapture);
+  photos::registerRoutes(server);
   server.begin();
   Serial.println("[web] serveur démarré sur le port 80");
 }
@@ -228,6 +237,14 @@ static void setupConsole() {
   console.add("sd", "relance le test de la microSD", [](const String &) {
     SD_MMC.end();
     testSd();
+    photos::begin(sdTest.mounted);
+  });
+  console.add("photo", "prend une photo et l'enregistre sur la microSD", [](const String &) {
+    const photos::SaveResult r = photos::takeAndSave();
+    if (!r.ok) Serial.printf("Échec : %s\n", r.error.c_str());
+  });
+  console.add("heure", "affiche l'heure (NTP)", [](const String &) {
+    Serial.printf("%s (%s)\n", bf::nowText().c_str(), bf::timeValid() ? "synchronisée" : "non synchronisée");
   });
   console.add("redemarrer", "redémarre le module", [](const String &) { ESP.restart(); });
 }
@@ -252,8 +269,10 @@ void setup() {
   // Caméra avant la microSD : ordre recommandé sur cette carte.
   if (cam::begin()) cam::benchmark(FRAMESIZE_SVGA, 10);
   testSd();
+  photos::begin(sdTest.mounted);
 
   wifi.begin(server, bf::moduleId());
+  bf::timeBegin();
   setupWeb();
   stream::begin();
   setupConsole();

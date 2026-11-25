@@ -19,6 +19,7 @@ static const char kCameraPageHtml[] PROGMEM = R"HTML(
 <section><h2>Direct</h2>
 <div class="live"><img id="flux" alt="Flux de la caméra"><span id="arret" hidden>Flux arrêté</span></div>
 <p><button id="bflux">Arrêter le flux</button> <button id="bphoto">Prendre une photo</button>
+<button id="bsave">Enregistrer sur la carte</button>
 <span id="stat"></span></p>
 <div id="photoBox" hidden><img id="photo" alt="Photo"><p><a id="dl" download="photo.jpg" href="#">Télécharger la photo</a></p></div>
 </section>
@@ -57,6 +58,13 @@ document.getElementById('bphoto').onclick=function(){
   document.getElementById('photo').src=u;
   document.getElementById('dl').href=u;
   document.getElementById('photoBox').hidden=false;
+};
+document.getElementById('bsave').onclick=function(){
+  msg.textContent='Capture…';msg.className='';
+  fetch('/api/photo',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
+    if(!d.ok){msg.textContent='Erreur : '+d.erreur;msg.className='err';return;}
+    msg.innerHTML='Photo enregistrée : <a href="'+d.url+'" target="_blank">'+d.nom+'</a> ('+d.taille+') · <a href="/photos">toutes les photos</a>';
+  }).catch(function(e){msg.textContent='Erreur : '+e;msg.className='err';});
 };
 function afficherValeurs(){
   ['qualite','luminosite','contraste','saturation','led'].forEach(function(n){
