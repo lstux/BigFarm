@@ -3,6 +3,7 @@
 // Point d'entrée unique du code partagé BigFarm.
 
 #include "bf_json.h"
+#include "bf_ota.h"
 #include "bf_system.h"
 #include "bf_time.h"
 #include "bf_storage.h"

@@ -44,6 +44,16 @@ static lv_obj_t *gSetWifi = nullptr;
 static lv_obj_t *gSetSystem = nullptr;
 static lv_obj_t *gRotBtns[4] = {nullptr};
 static lv_obj_t *gRebootBox = nullptr;
+static lv_obj_t *gBrightLabel = nullptr;
+
+// Saisie de texte, panneau d'information
+static lv_obj_t *gInput = nullptr;
+static lv_obj_t *gInputTa = nullptr;
+static TextDoneFn gInputDone = nullptr;
+static lv_obj_t *gOverlay = nullptr;
+static Actions gActions;
+
+void setActions(const Actions &actions) { gActions = actions; }
 
 // ---------------------------------------------------------------------------
 // Outils
@@ -323,9 +333,41 @@ static void buildModules(lv_obj_t *p) {
   camview::buildModuleCard(gModulesList);
 }
 
+static void setBrightLabel(int v) {
+  if (gBrightLabel == nullptr) return;
+  char buf[24];
+  snprintf(buf, sizeof buf, "Luminosité : %d %%", v);
+  lv_label_set_text(gBrightLabel, buf);
+}
+
 static void brightnessCb(lv_event_t *e) {
   lv_obj_t *slider = lv_event_get_target(e);
-  display::setBrightness(static_cast<uint8_t>(lv_slider_get_value(slider)));
+  const int v = lv_slider_get_value(slider);
+  setBrightLabel(v);
+  if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
+    display::setBrightness(static_cast<uint8_t>(v));  // enregistré au relâchement
+  } else {
+    display::previewBrightness(static_cast<uint8_t>(v));
+  }
+}
+
+static void wifiPanelCb(lv_event_t *) {
+  if (gActions.openWifiPanel) gActions.openWifiPanel();
+}
+
+static void renameDone(const char *text) {
+  if (gActions.rename == nullptr) return;
+  if (gActions.rename(text)) {
+    showOverlay("Nom sur le réseau", "Nouveau nom enregistré.\nRedémarrage…", -1);
+  } else {
+    showMessage("Nom invalide", "Lettres minuscules, chiffres et tirets seulement, 32 caractères au plus, "
+                                "sans tiret au début ni à la fin.");
+  }
+}
+
+static void renameCb(lv_event_t *) {
+  openTextInput("Nom sur le réseau", "Joignable ensuite sur http://<nom>.local/ (vide = nom par défaut)",
+                bf::hostName().c_str(), false, 32, renameDone);
 }
 
 static void updateRotationButtons() {
@@ -371,14 +413,17 @@ static void buildSettings(lv_obj_t *p) {
   lv_obj_t *wifi = makeColumn(makeCard(p, kW - 24, LV_SIZE_CONTENT));
   makeLabel(wifi, LV_SYMBOL_WIFI "  Wi-Fi", &bf_font_18, colorText());
   gSetWifi = makeWrapLabel(wifi, "", &bf_font_14, colorMuted(), kW - 48);
+  makeButton(wifi, LV_SYMBOL_WIFI " Changer de réseau", wifiPanelCb, nullptr);
 
   lv_obj_t *scr = makeColumn(makeCard(p, kW - 24, LV_SIZE_CONTENT));
   makeLabel(scr, LV_SYMBOL_IMAGE "  Écran", &bf_font_18, colorText());
-  makeLabel(scr, "Luminosité", &bf_font_14, colorMuted());
+  gBrightLabel = makeLabel(scr, "", &bf_font_14, colorMuted());
   lv_obj_t *slider = lv_slider_create(scr);
   lv_obj_set_width(slider, kW - 80);
-  lv_slider_set_range(slider, 10, 255);
+  lv_slider_set_range(slider, 5, 100);
   lv_slider_set_value(slider, display::brightness(), LV_ANIM_OFF);
+  setBrightLabel(display::brightness());
+  lv_obj_add_event_cb(slider, brightnessCb, LV_EVENT_VALUE_CHANGED, nullptr);
   lv_obj_add_event_cb(slider, brightnessCb, LV_EVENT_RELEASED, nullptr);
   makeLabel(scr, "Rotation", &bf_font_14, colorMuted());
   lv_obj_t *row = lv_obj_create(scr);
@@ -403,6 +448,7 @@ static void buildSettings(lv_obj_t *p) {
   lv_obj_t *sys = makeColumn(makeCard(p, kW - 24, LV_SIZE_CONTENT));
   makeLabel(sys, LV_SYMBOL_SETTINGS "  Système", &bf_font_18, colorText());
   gSetSystem = makeWrapLabel(sys, "", &bf_font_14, colorMuted(), kW - 48);
+  makeButton(sys, LV_SYMBOL_EDIT " Renommer", renameCb, nullptr);
   lv_obj_t *reboot = makeButton(sys, LV_SYMBOL_REFRESH " Redémarrer", rebootCb, nullptr);
   lv_obj_set_style_bg_color(reboot, lv_color_hex(0x5A3A3A), 0);
 }
@@ -482,7 +528,7 @@ void tick() {
     String w;
     if (connected) {
       w = "Réseau : " + WiFi.SSID() + "\nAdresse : " + WiFi.localIP().toString() + "\nSignal : " +
-          String(WiFi.RSSI()) + " dBm\nWeb : http://" + bf::moduleId() + ".local/";
+          String(WiFi.RSSI()) + " dBm\nWeb : http://" + bf::hostName() + ".local/";
     } else {
       w = "Non connecté.";
     }
@@ -492,13 +538,181 @@ void tick() {
     }
     lv_label_set_text(gSetWifi, w.c_str());
 
-    String s = "Identifiant : " + bf::moduleId() + "\nFirmware : " + String(bf::firmwareVersion()) +
+    String s = "Nom sur le réseau : " + bf::hostName() + ".local\nIdentifiant : " + bf::moduleId() + "\nFirmware : " + String(bf::firmwareVersion()) +
                "\nHeure : " + bf::nowText() + "\nEn marche depuis : " + uptimeText() +
                "\nMémoire libre : " + bf::humanBytes(ESP.getFreeHeap()) + " interne, " +
                bf::humanBytes(ESP.getFreePsram()) + " PSRAM";
     lv_label_set_text(gSetSystem, s.c_str());
   }
   (void)gHomeAlerts;
+}
+
+// ---------------------------------------------------------------------------
+// Clavier AZERTY (minuscules / majuscules) ; le mode « 1# » reste celui de LVGL.
+
+#define BF_KB_FLAGS (LV_BTNMATRIX_CTRL_NO_REPEAT | LV_BTNMATRIX_CTRL_CLICK_TRIG | LV_BTNMATRIX_CTRL_CHECKED)
+#define BF_KB_KEY(w) (LV_BTNMATRIX_CTRL_POPOVER | (w))
+
+static const char *kAzertyLower[] = {"1#", "a", "z", "e", "r", "t", "y", "u", "i", "o", "p", LV_SYMBOL_BACKSPACE, "\n",
+                                     "ABC", "q", "s", "d", "f", "g", "h", "j", "k", "l", "m", LV_SYMBOL_NEW_LINE, "\n",
+                                     "_", "-", "w", "x", "c", "v", "b", "n", ".", ",", "@", "\n",
+                                     LV_SYMBOL_KEYBOARD, LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, LV_SYMBOL_OK, ""};
+static const char *kAzertyUpper[] = {"1#", "A", "Z", "E", "R", "T", "Y", "U", "I", "O", "P", LV_SYMBOL_BACKSPACE, "\n",
+                                     "abc", "Q", "S", "D", "F", "G", "H", "J", "K", "L", "M", LV_SYMBOL_NEW_LINE, "\n",
+                                     "_", "-", "W", "X", "C", "V", "B", "N", ".", ",", "@", "\n",
+                                     LV_SYMBOL_KEYBOARD, LV_SYMBOL_LEFT, " ", LV_SYMBOL_RIGHT, LV_SYMBOL_OK, ""};
+static const lv_btnmatrix_ctrl_t kAzertyCtrl[] = {
+    // ligne 1 : 1# + 10 lettres + effacer
+    BF_KB_FLAGS | 5, BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4),
+    BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), LV_BTNMATRIX_CTRL_CHECKED | 7,
+    // ligne 2 : ABC + 10 lettres + entrée
+    BF_KB_FLAGS | 5, BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4),
+    BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), BF_KB_KEY(4), LV_BTNMATRIX_CTRL_CHECKED | 7,
+    // ligne 3 : _ - + 6 lettres + . , @
+    LV_BTNMATRIX_CTRL_CHECKED | BF_KB_KEY(1), LV_BTNMATRIX_CTRL_CHECKED | BF_KB_KEY(1), BF_KB_KEY(1), BF_KB_KEY(1),
+    BF_KB_KEY(1), BF_KB_KEY(1), BF_KB_KEY(1), BF_KB_KEY(1), LV_BTNMATRIX_CTRL_CHECKED | BF_KB_KEY(1),
+    LV_BTNMATRIX_CTRL_CHECKED | BF_KB_KEY(1), LV_BTNMATRIX_CTRL_CHECKED | BF_KB_KEY(1),
+    // ligne 4
+    BF_KB_FLAGS | 2, LV_BTNMATRIX_CTRL_CHECKED | 2, 6, LV_BTNMATRIX_CTRL_CHECKED | 2, BF_KB_FLAGS | 2};
+
+static lv_obj_t *fullScreenPanel() {
+  lv_obj_t *p = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(p, kW, 480);
+  lv_obj_set_style_bg_color(p, colorBg(), 0);
+  lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(p, 0, 0);
+  lv_obj_set_style_radius(p, 0, 0);
+  lv_obj_set_style_pad_all(p, 12, 0);
+  lv_obj_clear_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+  return p;
+}
+
+void closeTextInput() {
+  if (gInput != nullptr) {
+    lv_obj_del(gInput);
+    gInput = nullptr;
+    gInputTa = nullptr;
+    gInputDone = nullptr;
+  }
+}
+
+static void inputCloseCb(lv_event_t *) { closeTextInput(); }
+
+static void inputReadyCb(lv_event_t *) {
+  if (gInputTa == nullptr) return;
+  const String text = lv_textarea_get_text(gInputTa);
+  TextDoneFn done = gInputDone;
+  closeTextInput();
+  if (done != nullptr) done(text.c_str());
+}
+
+static void inputEyeCb(lv_event_t *) {
+  if (gInputTa == nullptr) return;
+  lv_textarea_set_password_mode(gInputTa, !lv_textarea_get_password_mode(gInputTa));
+}
+
+void openTextInput(const char *title, const char *hint, const char *initial, bool password, uint8_t maxLen,
+                   TextDoneFn done) {
+  closeTextInput();
+  gInputDone = done;
+  gInput = fullScreenPanel();
+
+  lv_obj_t *t = makeLabel(gInput, title, &bf_font_24, colorText());
+  lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 2);
+  lv_obj_t *close = lv_btn_create(gInput);
+  lv_obj_set_size(close, 48, 40);
+  lv_obj_set_style_bg_color(close, lv_color_hex(0x2A363D), 0);
+  lv_obj_align(close, LV_ALIGN_TOP_RIGHT, 0, 0);
+  lv_obj_t *cl = lv_label_create(close);
+  lv_label_set_text(cl, LV_SYMBOL_CLOSE);
+  lv_obj_center(cl);
+  lv_obj_add_event_cb(close, inputCloseCb, LV_EVENT_CLICKED, nullptr);
+
+  if (hint != nullptr && hint[0]) {
+    lv_obj_t *h = makeWrapLabel(gInput, hint, &bf_font_14, colorMuted(), kW - 24);
+    lv_obj_align(h, LV_ALIGN_TOP_LEFT, 0, 48);
+  }
+
+  gInputTa = lv_textarea_create(gInput);
+  lv_textarea_set_one_line(gInputTa, true);
+  lv_textarea_set_max_length(gInputTa, maxLen);
+  lv_textarea_set_text(gInputTa, initial != nullptr ? initial : "");
+  lv_textarea_set_password_mode(gInputTa, password);
+  lv_obj_set_style_text_font(gInputTa, &bf_font_24, 0);
+  lv_obj_set_width(gInputTa, password ? kW - 24 - 58 : kW - 24);
+  lv_obj_align(gInputTa, LV_ALIGN_TOP_LEFT, 0, 96);
+  lv_obj_add_state(gInputTa, LV_STATE_FOCUSED);  // curseur visible
+  lv_obj_add_event_cb(gInputTa, inputReadyCb, LV_EVENT_READY, nullptr);
+  lv_obj_add_event_cb(gInputTa, inputCloseCb, LV_EVENT_CANCEL, nullptr);
+
+  if (password) {
+    lv_obj_t *eye = lv_btn_create(gInput);
+    lv_obj_set_size(eye, 50, 50);
+    lv_obj_set_style_bg_color(eye, lv_color_hex(0x2A363D), 0);
+    lv_obj_align(eye, LV_ALIGN_TOP_RIGHT, 0, 96);
+    lv_obj_t *el = lv_label_create(eye);
+    lv_label_set_text(el, LV_SYMBOL_EYE_OPEN);
+    lv_obj_center(el);
+    lv_obj_add_event_cb(eye, inputEyeCb, LV_EVENT_CLICKED, nullptr);
+  }
+
+  lv_obj_t *kb = lv_keyboard_create(gInput);
+  lv_obj_set_size(kb, kW, 250);
+  lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 12);
+  lv_obj_set_style_text_font(kb, &bf_font_18, 0);
+  lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_LOWER, kAzertyLower, kAzertyCtrl);
+  lv_keyboard_set_map(kb, LV_KEYBOARD_MODE_TEXT_UPPER, kAzertyUpper, kAzertyCtrl);
+  lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+  lv_keyboard_set_popovers(kb, true);
+  lv_keyboard_set_textarea(kb, gInputTa);
+}
+
+// ---------------------------------------------------------------------------
+// Panneau d'information, message
+
+void showOverlay(const char *title, const char *text, int percent) {
+  if (gOverlay == nullptr) {
+    gOverlay = fullScreenPanel();
+    lv_obj_t *t = makeLabel(gOverlay, "", &bf_font_24, colorAccent());
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, -60);
+    lv_obj_t *m = makeWrapLabel(gOverlay, "", &bf_font_18, colorText(), kW - 60);
+    lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(m, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_t *bar = lv_bar_create(gOverlay);
+    lv_obj_set_size(bar, kW - 100, 16);
+    lv_obj_align(bar, LV_ALIGN_CENTER, 0, 60);
+    lv_bar_set_range(bar, 0, 100);
+  }
+  lv_obj_t *t = lv_obj_get_child(gOverlay, 0);
+  lv_obj_t *m = lv_obj_get_child(gOverlay, 1);
+  lv_obj_t *bar = lv_obj_get_child(gOverlay, 2);
+  lv_label_set_text(t, title);
+  lv_obj_align(t, LV_ALIGN_CENTER, 0, -60);
+  lv_label_set_text(m, text);
+  if (percent >= 0) {
+    lv_bar_set_value(bar, percent, LV_ANIM_OFF);
+    lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+  }
+  lv_refr_now(nullptr);
+}
+
+void hideOverlay() {
+  if (gOverlay != nullptr) {
+    lv_obj_del(gOverlay);
+    gOverlay = nullptr;
+  }
+}
+
+static void messageCb(lv_event_t *e) { lv_msgbox_close(lv_event_get_current_target(e)); }
+
+void showMessage(const char *title, const char *text) {
+  static const char *btns[] = {"OK", ""};
+  lv_obj_t *box = lv_msgbox_create(nullptr, title, text, btns, false);
+  lv_obj_set_width(box, 380);
+  lv_obj_center(box);
+  lv_obj_add_event_cb(box, messageCb, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 
 }  // namespace ui

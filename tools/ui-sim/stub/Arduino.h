@@ -13,6 +13,11 @@ struct String : std::string {
   String(long v) : std::string(std::to_string(v)) {}
   const char *c_str() const { return std::string::c_str(); }
   size_t length() const { return size(); }
+  void trim() {
+    size_t b = find_first_not_of(" \t\r\n");
+    size_t e = find_last_not_of(" \t\r\n");
+    *this = (b == npos) ? String() : String(substr(b, e - b + 1));
+  }
 };
 inline String operator+(const String &a, const String &b) { return String(static_cast<const std::string &>(a) + static_cast<const std::string &>(b)); }
 inline String operator+(const String &a, const char *b) { return a + String(b); }

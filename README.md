@@ -78,6 +78,23 @@ Commandes série en plus : `luminosite <10-255>`, `rotation <0|90|180|270>`, `pa
 
 Aperçu des écrans (rendu sur PC avec le même code) : [`docs/captures`](docs/captures). Pour le régénérer : `tools/ui-sim/build.sh`.
 
+### Nom sur le réseau et mises à jour sans fil
+
+- **Nom** : chaque module est joignable sur `http://<nom>.local/`. Par défaut c'est son identifiant (`bf-cam-9581b0`), qu'on peut changer sur la page `/wifi` (section « Nom sur le réseau »), avec la commande série `nom <nom>`, ou sur l'écran de la centrale (Réglages → Renommer).
+- **OTA depuis PlatformIO** : `pio run -d firmware/cam -e esp32cam-ota -t upload --upload-port <nom>.local` (centrale : `-e guition-4848s040-ota`). Mot de passe `bigfarm-setup`, déjà configuré.
+- **OTA depuis le navigateur** : page `/maj` du module, envoyer `.pio/build/<environnement>/firmware.bin`.
+
+### Wi-Fi depuis l'écran de la centrale
+
+Réglages → « Changer de réseau » : liste des réseaux détectés, mot de passe au clavier virtuel (AZERTY), puis la centrale redémarre et se connecte.
+
+### Rétroéclairage
+
+Le curseur de luminosité va de 5 à 100 %, réparti entre un seuil (en dessous, l'écran est noir) et le maximum. Calibrage par la console série :
+- `retro 120` : essaie un rapport cyclique brut (0-255), sans l'enregistrer ;
+- `retro min 120` : enregistre le seuil qui correspondra à 0 % ;
+- `retro freq 1000` : change la fréquence PWM (100 à 40000 Hz).
+
 ## Sécurité
 
 Les sorties de la carte fille de la centrale (L1/L2/L3, secteur) **ne sont pas pilotées** par le code actuel. Aucune charge ne doit y être raccordée avant l'identification électrique de la carte (voir `docs/materiel.md`).
