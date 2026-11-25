@@ -70,7 +70,11 @@ Commandes série (taper `aide`) : `info`, `wifi`, `oublier`, `redemarrer`, plus 
 
 L'écran tactile affiche l'interface BigFarm : barre d'état (heure, Wi-Fi), six sections (Accueil, Caméra, Mesures, Commandes, Modules, Réglages). Dans Réglages : état du Wi-Fi, luminosité et rotation de l'écran (enregistrées), informations système, redémarrage.
 
-Commandes série en plus : `luminosite <10-255>`, `rotation <0|90|180|270>`, `page <0-5>`.
+**Caméra sur la centrale** : la centrale trouve la caméra toute seule (mDNS, service `_bigfarm._tcp`) et affiche son flux sur la page Caméra (toucher l'image pour le plein écran) et en vignette sur l'Accueil. Boutons Photo (enregistrée sur la microSD de la caméra) et Pause. Le flux n'est lu que quand une de ces vues est affichée. Si la découverte échoue, fixer l'adresse : commande série `camera 192.168.1.50` (`camera auto` pour revenir à la découverte), ou formulaire sur la page web de la centrale.
+
+Conseil : régler la caméra en VGA ou SVGA pour la centrale. Les grandes résolutions passent, mais elles sont réduites au décodage et la cadence baisse.
+
+Commandes série en plus : `luminosite <10-255>`, `rotation <0|90|180|270>`, `page <0-5>`, `camera <ip>|auto`.
 
 Aperçu des écrans (rendu sur PC avec le même code) : [`docs/captures`](docs/captures). Pour le régénérer : `tools/ui-sim/build.sh`.
 

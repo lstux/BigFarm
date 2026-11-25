@@ -3,6 +3,7 @@
 #include <BigFarmCore.h>
 #include <WiFi.h>
 
+#include "camera_view.h"
 #include "display.h"
 
 namespace ui {
@@ -260,7 +261,8 @@ static void buildHome(lv_obj_t *p) {
   lv_obj_align(camState, LV_ALIGN_TOP_LEFT, 0, 30);
   lv_obj_set_user_data(gHomeCamera, camState);
   lv_obj_t *open = makeButton(gHomeCamera, "Ouvrir", openCameraCb, nullptr);
-  lv_obj_align(open, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+  lv_obj_align(open, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  camview::buildHome(gHomeCamera);
 
   lv_obj_t *mods = makeCard(p, half, 64);
   makeLabel(mods, "Modules", &bf_font_14, colorMuted());
@@ -270,15 +272,6 @@ static void buildHome(lv_obj_t *p) {
   makeLabel(alerts, "Alertes", &bf_font_14, colorMuted());
   gHomeAlerts = makeLabel(alerts, "0", &bf_font_24, colorText());
   lv_obj_align(gHomeAlerts, LV_ALIGN_RIGHT_MID, 0, 0);
-}
-
-static void buildCameraPlaceholder(lv_obj_t *p) {
-  pageTitle(p, "CAMÉRA");
-  lv_obj_t *c = makeColumn(makeCard(p, kW - 24, 160));
-  makeWrapLabel(c, "La vue caméra arrive avec la prochaine mise à jour de la centrale.", &bf_font_18,
-                colorText(), kW - 48);
-  makeWrapLabel(c, "En attendant : page Caméra du module, depuis un navigateur.", &bf_font_14, colorMuted(),
-                kW - 48);
 }
 
 static void buildMeasures(lv_obj_t *p) {
@@ -326,6 +319,8 @@ static void buildModules(lv_obj_t *p) {
   String line = String("Cette centrale · en ligne · ") + bf::firmwareVersion();
   makeLabel(c, line.c_str(), &bf_font_14, colorAccent());
   makeLabel(c, bf::moduleId().c_str(), &bf_font_14, colorMuted());
+
+  camview::buildModuleCard(gModulesList);
 }
 
 static void brightnessCb(lv_event_t *e) {
@@ -432,7 +427,7 @@ void begin() {
   buildNavBar(scr);
 
   buildHome(gPages[PAGE_HOME]);
-  buildCameraPlaceholder(gPages[PAGE_CAMERA]);
+  camview::buildPage(gPages[PAGE_CAMERA]);
   buildMeasures(gPages[PAGE_MEASURES]);
   buildCommands(gPages[PAGE_COMMANDS]);
   buildModules(gPages[PAGE_MODULES]);
