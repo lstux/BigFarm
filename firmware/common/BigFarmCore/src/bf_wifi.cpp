@@ -22,8 +22,10 @@ void WifiSetup::begin(WebServer &server, const String &moduleId) {
   // "bf-cam-a1b2c3" -> "BigFarm-cam-a1b2c3"
   apSsid_ = String("BigFarm-") + (id_.startsWith("bf-") ? id_.substring(3) : id_);
 
+  host_ = hostName();
+
   WiFi.persistent(false);  // les identifiants sont gérés ici, pas par le pilote
-  WiFi.setHostname(id_.c_str());
+  WiFi.setHostname(host_.c_str());
 
   bool ok = false;
   if (loadCredentials()) {
@@ -34,19 +36,20 @@ void WifiSetup::begin(WebServer &server, const String &moduleId) {
   }
   if (!ok) startAp();
 
-  if (MDNS.begin(id_.c_str())) {
+  if (MDNS.begin(host_.c_str())) {
     MDNS.addService("http", "tcp", 80);
     // Service BigFarm : permet à la centrale de découvrir les modules.
     MDNS.addService("bigfarm", "tcp", 80);
     MDNS.addServiceTxt("bigfarm", "tcp", "type", moduleType());
     MDNS.addServiceTxt("bigfarm", "tcp", "id", id_.c_str());
     MDNS.addServiceTxt("bigfarm", "tcp", "fw", firmwareVersion());
-    Serial.printf("[wifi] mDNS : http://%s.local/\n", id_.c_str());
+    Serial.printf("[wifi] mDNS : http://%s.local/\n", host_.c_str());
   }
 
   server.on("/wifi", HTTP_GET, [this]() { handlePage(); });
   server.on("/wifi", HTTP_POST, [this]() { handleSave(); });
   server.on("/wifi/oublier", HTTP_POST, [this]() { handleForget(); });
+  server.on("/nom", HTTP_POST, [this]() { handleRename(); });
   server.onNotFound([this]() { handleNotFound(); });
 }
 
@@ -151,7 +154,7 @@ void WifiSetup::addStatus(JsonWriter &json) const {
                    : mode == WIFI_AP   ? "point d'accès"
                    : mode == WIFI_STA  ? "station"
                                        : "arrêté");
-  json.add("nom_reseau", WiFi.getHostname());
+  json.add("nom_reseau", host_ + ".local");
   json.add("mac", WiFi.macAddress());
   json.add("reseau_enregistre", ssid_.length() ? ssid_.c_str() : nullptr);
   json.add("connecte", connected());
@@ -234,6 +237,14 @@ void WifiSetup::handlePage() {
             "<p><label style=\"display:inline\"><input type=\"checkbox\" "
             "onchange=\"document.getElementById('pass').type=this.checked?'text':'password'\"> Afficher</label></p>"
             "<p><button type=\"submit\">Enregistrer et redémarrer</button></p></form></section>"
+            "<section><h2>Nom sur le réseau</h2>"
+            "<form method=\"post\" action=\"/nom\">"
+            "<label for=\"nom\">Le module sera joignable sur http://&lt;nom&gt;.local/ "
+            "(minuscules, chiffres, tirets ; vide = nom par défaut)</label>"
+            "<input id=\"nom\" name=\"nom\" maxlength=\"32\" autocapitalize=\"off\" "
+            "pattern=\"[a-z0-9]([a-z0-9-]*[a-z0-9])?\" value=\"");
+  page += htmlEscape(host_);
+  page += F("\"><p><button type=\"submit\">Renommer et redémarrer</button></p></form></section>"
             "<section><h2>Oublier le réseau</h2>"
             "<form method=\"post\" action=\"/wifi/oublier\" "
             "onsubmit=\"return confirm('Oublier le réseau et redémarrer en point d\\'accès ?')\">"
@@ -266,6 +277,30 @@ void WifiSetup::handleSave() {
 void WifiSetup::handleForget() {
   server_->send(200, "text/plain; charset=utf-8", "Réseau oublié, redémarrage en point d'accès.");
   forget();
+}
+
+bool WifiSetup::rename(const String &name) {
+  if (!setHostName(name)) return false;
+  Serial.printf("[wifi] nouveau nom réseau : %s.local\n", hostName().c_str());
+  restartAt_ = millis() + 1500;
+  return true;
+}
+
+void WifiSetup::handleRename() {
+  const String name = server_->arg("nom");
+  String page = pageHeader("Nom du module");
+  if (!rename(name)) {
+    page += F("<section><p>Nom invalide : lettres minuscules, chiffres et tirets seulement, 32 caractères au plus, "
+              "sans tiret au début ni à la fin.</p><p><a href=\"/wifi\">Retour</a></p></section>");
+    page += pageFooter();
+    server_->send(400, "text/html; charset=utf-8", page);
+    return;
+  }
+  const String n = hostName();
+  page += "<section><p>Nouveau nom : <b>" + htmlEscape(n) + ".local</b>. Le module redémarre ; il sera joignable sur "
+          "<a href=\"http://" + htmlEscape(n) + ".local/\">http://" + htmlEscape(n) + ".local/</a> dans quelques secondes.</p></section>";
+  page += pageFooter();
+  server_->send(200, "text/html; charset=utf-8", page);
 }
 
 void WifiSetup::handleNotFound() {

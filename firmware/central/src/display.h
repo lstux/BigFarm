@@ -14,9 +14,23 @@ bool begin();
 void loop();
 bool ready();
 
-// Luminosité du rétroéclairage, 10 à 255, enregistrée.
-void setBrightness(uint8_t level);
+// Luminosité du rétroéclairage en pourcentage (5 à 100), enregistrée.
+// Le pourcentage est réparti entre le seuil minimal (en dessous, l'écran reste noir)
+// et le maximum : voir setBacklightMin().
+void setBrightness(uint8_t percent);
 uint8_t brightness();
+// Application immédiate sans enregistrement (pendant qu'on bouge le curseur).
+void previewBrightness(uint8_t percent);
+
+// Calibrage du rétroéclairage (commande série « retro ») :
+// - rapport cyclique brut 0-255, temporaire, pour trouver le seuil ;
+void setBacklightRaw(uint8_t duty);
+// - seuil minimal (rapport cyclique correspondant à 0 %), enregistré ;
+void setBacklightMin(uint8_t duty);
+uint8_t backlightMin();
+// - fréquence du signal PWM en Hz (100 à 40000), enregistrée.
+bool setBacklightFrequency(uint32_t hz);
+uint32_t backlightFrequency();
 
 // Rotation de l'affichage en degrés (0, 90, 180, 270), enregistrée.
 bool setRotation(uint16_t degrees);

@@ -30,6 +30,13 @@ class WifiSetup {
   // Efface les identifiants puis redémarre.
   void forget();
 
+  // Change le nom réseau (<nom>.local) puis redémarre. false si le nom est invalide.
+  bool rename(const String &name);
+  // Réseau enregistré (vide si aucun).
+  const String &savedSsid() const { return ssid_; }
+  // Nom réseau actuel, sans « .local ».
+  const String &host() const { return host_; }
+
   void addStatus(JsonWriter &json) const;
 
  private:
@@ -40,11 +47,13 @@ class WifiSetup {
   void handlePage();
   void handleSave();
   void handleForget();
+  void handleRename();
   void handleNotFound();
 
   WebServer *server_ = nullptr;
   DNSServer dns_;
   String id_;
+  String host_;
   String ssid_;
   String pass_;
   String apSsid_;

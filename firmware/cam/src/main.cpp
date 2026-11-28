@@ -69,6 +69,7 @@ static String buildDiag() {
   photos::addStatus(j);
   bf::addTime(j);
   wifi.addStatus(j);
+  bf::addOtaStatus(j);
   j.endObject();
   return j.str();
 }
@@ -231,6 +232,9 @@ static void setupConsole() {
     }
     wifi.saveCredentials(ssid, pass);
   });
+  console.add("nom", "nom <nom> : nom sur le réseau (<nom>.local), vide = par défaut", [](const String &args) {
+    if (!wifi.rename(args)) Serial.println("Nom invalide : minuscules, chiffres et tirets, 32 caractères au plus");
+  });
   console.add("oublier", "oublie le réseau Wi-Fi et redémarre", [](const String &) { wifi.forget(); });
   console.add("mesure", "mesure de capture (SVGA, 10 images)",
               [](const String &) { cam::benchmark(FRAMESIZE_SVGA, 10); });
@@ -273,13 +277,14 @@ void setup() {
 
   wifi.begin(server, bf::moduleId());
   bf::timeBegin();
+  bf::otaBegin(server, bf::OtaHooks());
   setupWeb();
   stream::begin();
   setupConsole();
 
   printDiag();
-  Serial.printf("Caméra : http://%s/  ·  flux : http://%s:%u/stream\n", localIp().c_str(), localIp().c_str(),
-                stream::kPort);
+  Serial.printf("Caméra : http://%s.local/ (%s)  ·  flux : http://%s:%u/stream\n", bf::hostName().c_str(),
+                localIp().c_str(), localIp().c_str(), stream::kPort);
   Serial.println("Tapez « aide » pour la liste des commandes.");
   digitalWrite(CAM_PIN_STATUS_LED, LOW);  // allumée : démarrage terminé
 }
@@ -287,6 +292,7 @@ void setup() {
 void loop() {
   server.handleClient();
   wifi.loop();
+  bf::otaLoop();
   console.loop(Serial);
   delay(2);
 }

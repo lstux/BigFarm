@@ -30,3 +30,11 @@ Les décisions sont datées. Une décision peut être revue : on ajoute alors un
 - **Économie** : le flux n'est demandé que si la page Caméra, l'Accueil ou le plein écran sont affichés.
 - **États explicites** à l'écran : recherche, introuvable, connexion, en direct, interrompu, avec l'âge de la dernière image (« Dernière image il y a 12 s »).
 - La photo est déclenchée depuis la centrale, mais **enregistrée par la caméra** sur sa microSD. Le transfert vers la centrale relève du Jalon 3 (bibliothèque de médias).
+
+## 2026-11-25 — Confort : nom réseau, OTA, clavier, rétroéclairage
+
+- **Nom réseau personnalisable** (`<nom>.local`), enregistré en NVS. L'identifiant `bf-<type>-xxxxxx` reste inchangé pour l'identité du module et la découverte (champ `id` du mDNS).
+- **OTA** : ArduinoOTA (espota, port 3232, mot de passe `bigfarm-setup`) et page web `/maj` (envoi du `firmware.bin`). La centrale affiche la progression à l'écran et coupe le flux caméra pendant la mise à jour.
+- **Clavier virtuel AZERTY** (LVGL, minuscules/majuscules ; le mode « 1# » reste celui de LVGL), utilisé pour le Wi-Fi et le renommage.
+- **Rétroéclairage** : curseur en pourcentage, réparti entre un seuil et le maximum ; fréquence PWM passée de 5 kHz à 1 kHz (test). Seuil et fréquence réglables à la console, enregistrés.
+- Les polices incluent les barres de signal `▂▄▆█` (glyphes DejaVu Sans, licence libre).

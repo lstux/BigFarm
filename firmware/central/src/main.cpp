@@ -21,6 +21,7 @@
 #include "camera_view.h"
 #include "display.h"
 #include "ui.h"
+#include "wifi_panel.h"
 
 #ifndef BF_FW_VERSION
 #define BF_FW_VERSION "dev"
@@ -151,6 +152,7 @@ static String buildDiag() {
   display::addStatus(j);
   camclient::addStatus(j);
   bf::addTime(j);
+  bf::addOtaStatus(j);
   j.beginObject("sorties");
   j.add("etat", "non pilotées (carte fille à identifier avant tout usage)");
   j.endObject();
@@ -217,13 +219,32 @@ static void setupConsole() {
     SD.end();
     testSd();
   });
-  console.add("luminosite", "luminosite <10-255> : rétroéclairage de l'écran", [](const String &args) {
+  console.add("luminosite", "luminosite <5-100> : luminosité de l'écran en %", [](const String &args) {
     const long v = args.toInt();
-    if (v < 10 || v > 255) {
-      Serial.println("Usage : luminosite <10-255>");
+    if (v < 5 || v > 100) {
+      Serial.println("Usage : luminosite <5-100>");
       return;
     }
     display::setBrightness(static_cast<uint8_t>(v));
+  });
+  console.add("retro", "retro <0-255> | retro min <0-255> | retro freq <Hz> : calibrage du rétroéclairage",
+              [](const String &args) {
+                String a, b;
+                bf::SerialConsole::splitFirst(args, a, b);
+                if (a == "min" && b.length()) {
+                  display::setBacklightMin(static_cast<uint8_t>(constrain(b.toInt(), 0, 254)));
+                } else if (a == "freq" && b.length()) {
+                  if (!display::setBacklightFrequency(b.toInt())) Serial.println("Fréquence : 100 à 40000 Hz");
+                } else if (a.length()) {
+                  display::setBacklightRaw(static_cast<uint8_t>(constrain(a.toInt(), 0, 255)));
+                  Serial.println("Valeur temporaire (non enregistrée).");
+                }
+                Serial.printf("Rétroéclairage : seuil %u (= 0 %%), fréquence %lu Hz, luminosité %u %%\n",
+                              display::backlightMin(), static_cast<unsigned long>(display::backlightFrequency()),
+                              display::brightness());
+              });
+  console.add("nom", "nom <nom> : nom sur le réseau (<nom>.local), vide = par défaut", [](const String &args) {
+    if (!wifi.rename(args)) Serial.println("Nom invalide : minuscules, chiffres et tirets, 32 caractères au plus");
   });
   console.add("rotation", "rotation <0|90|180|270> : orientation de l'écran", [](const String &args) {
     if (!display::setRotation(static_cast<uint16_t>(args.toInt()))) Serial.println("Usage : rotation <0|90|180|270>");
@@ -247,6 +268,34 @@ static void setupConsole() {
     ui::showPage(static_cast<ui::Page>(args.toInt()));
   });
   console.add("redemarrer", "redémarre la centrale", [](const String &) { ESP.restart(); });
+}
+
+// ---------------------------------------------------------------------------
+// Liens entre l'interface et le reste (Wi-Fi, nom, mises à jour)
+
+static void saveWifi(const String &ssid, const String &pass) { wifi.saveCredentials(ssid, pass); }
+static bool renameModule(const char *name) { return wifi.rename(String(name)); }
+
+static void otaStart() {
+  camclient::setWanted(false);
+  if (display::ready()) ui::showOverlay("Mise à jour", "Réception du nouveau firmware…\nNe pas couper l'alimentation.", 0);
+}
+
+static void otaProgress(uint8_t percent) {
+  if (!display::ready()) return;
+  char buf[64];
+  snprintf(buf, sizeof buf, "Réception du nouveau firmware… %u %%\nNe pas couper l'alimentation.", percent);
+  ui::showOverlay("Mise à jour", buf, percent);
+}
+
+static void otaEnd(bool ok, const char *message) {
+  if (!display::ready()) return;
+  if (ok) {
+    ui::showOverlay("Mise à jour", "Terminée. Redémarrage…", 100);
+  } else {
+    ui::hideOverlay();
+    ui::showMessage("Mise à jour", message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,9 +326,21 @@ void setup() {
   wifi.begin(server, bf::moduleId());
   bf::timeBegin();
   camclient::begin();
+  bf::OtaHooks hooks;
+  hooks.onStart = otaStart;
+  hooks.onProgress = otaProgress;
+  hooks.onEnd = otaEnd;
+  bf::otaBegin(server, hooks);
   setupWeb();
   setupConsole();
-  if (screen) ui::begin();
+  if (screen) {
+    ui::Actions actions;
+    actions.openWifiPanel = wifipanel::open;
+    actions.rename = renameModule;
+    ui::setActions(actions);
+    wifipanel::setSaveHandler(saveWifi);
+    ui::begin();
+  }
 
   printDiag();
   Serial.println("Tapez « aide » pour la liste des commandes.");
@@ -288,6 +349,7 @@ void setup() {
 void loop() {
   server.handleClient();
   wifi.loop();
+  bf::otaLoop();
   console.loop(Serial);
   if (display::ready()) camview::loop();
   display::loop();
